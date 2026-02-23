@@ -1,0 +1,44 @@
+{
+  "name": "Impulse_Fib618_Pullback_Continuation_HTF",
+  "id": "IFPC_0.618_HTF",
+  "impulse_detection": {
+    "min_atr_multiplier": 2.0,
+    "min_candles": 4,
+    "min_body_ratio": 0.6,
+    "max_internal_retracement": 0.30,
+    "displacement_required": true
+  },
+  "pullback_detection": {
+    "fib_range": {
+      "min": 0.50,
+      "max": 0.705,
+      "optimal": 0.618,
+      "tolerance": 0.025
+    },
+    "max_duration_candles": 12,
+    "require_slowdown": true
+  },
+  "structure_requirements": {
+    "swing_confirmation_candles": 2,
+    "extremum_type": "higher_high_or_lower_low",
+    "structure_break_required": true,
+    "break_confirmation": "close_beyond_key_level"
+  },
+  "risk_management": {
+    "stop_loss": {
+      "type": "beyond_extremum",
+      "buffer_atr": 0.15
+    },
+    "take_profit": [
+      {
+        "type": "impulse_extreme",
+        "rr_min": 2.5
+      },
+      {
+        "type": "fib_extension",
+        "level": 1.272
+      }
+    ],
+    "max_bars_in_trade": 40
+  }
+}

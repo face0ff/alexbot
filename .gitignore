@@ -1,0 +1,8 @@
+.venv/
+.idea/
+__pycache__/
+*.parquet
+*.pyc
+.pytest_cache/
+impulse_fib_trader/__pycache__/
+impulse_fib_trader/data/*.parquet
