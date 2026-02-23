@@ -72,6 +72,8 @@ def main():
     logger.info("Training ML model...")
     trainer = MLTrainer()
     model, ml_eval = trainer.train(X, y)
+    trainer.save_model('trained_model.joblib')
+    logger.info("Model saved to trained_model.joblib")
     
     # 5. ML-Filtered Backtest
     logger.info("Evaluating ML-filtered results...")
