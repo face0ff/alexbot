@@ -2,8 +2,8 @@
   "name": "Impulse_Fib75_FalseBreak_PremiumDiscount",
   "id": "IFPC_CORRECTED_v1",
   "impulse_detection": {
-    "min_atr_multiplier": 1.0,
-    "min_candles": 2,
+    "min_atr_multiplier": 2.0,
+    "min_candles": 4,
     "min_body_ratio": 0.6,
     "max_internal_retracement": 0.30,
     "displacement_required": true,

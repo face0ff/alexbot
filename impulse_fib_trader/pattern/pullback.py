@@ -4,16 +4,26 @@ from typing import List, Dict, Optional
 
 class PullbackMeasurer:
     def __init__(self, config: Dict):
-        self.config = config['pullback_detection']
+        # Support both old and new config structures
+        self.config = config.get('pullback_requirements', 
+                                config.get('pullback_detection', {}))
+        self.old_config = config.get('pullback_detection', {})
 
     def measure(self, impulse: Dict, df: pd.DataFrame) -> Optional[Dict]:
         """
         Measures if a pullback following an impulse is valid.
         """
         start_idx = impulse['end_idx'] + 1
-        max_duration = self.config['max_duration_candles']
-        fib_min = self.config['fib_range']['min']
-        fib_max = self.config['fib_range']['max']
+        # Увеличиваем до 48 часов (2 дня на H1), чтобы ловить долгие боковики
+        max_duration = 48 
+        
+        # New config keys
+        fib_min = self.config.get('min_retracement', 
+                                 self.old_config.get('fib_range', {}).get('min', 0.50))
+        fib_max = self.config.get('max_retracement', 
+                                 self.old_config.get('fib_range', {}).get('max', 0.705))
+        
+        touch_50_required = self.config.get('touch_50_level', False)
         
         if start_idx >= len(df):
             return None
@@ -31,28 +41,24 @@ class PullbackMeasurer:
             
             if impulse['type'] == 'bullish':
                 pullback_low = window['low'].min()
-                # Check if price broke below impulse start (invalidated)
                 if pullback_low < impulse_low:
                     return None
                     
                 retracement = (impulse_high - pullback_low) / impulse_range
                 
-                # Check if current close is within Fib range or we found a swing low in Fib range
+                # Check touch 50 level if required
+                touched_50 = (impulse_high - window['low'].min()) / impulse_range >= 0.5
+                if touch_50_required and not touched_50:
+                    continue
+                
                 if fib_min <= retracement <= fib_max:
-                    # Slowdown check: average candle size in pullback < impulse avg
-                    impulse_avg_body = np.abs(df.iloc[impulse['start_idx']:impulse['end_idx']+1]['close'] - 
-                                            df.iloc[impulse['start_idx']:impulse['end_idx']+1]['open']).mean()
-                    pullback_avg_body = np.abs(window['close'] - window['open']).mean()
-                    
-                    if self.config['require_slowdown'] and pullback_avg_body >= impulse_avg_body:
-                        continue
-                        
                     return {
                         'start_idx': start_idx,
                         'end_idx': current_idx,
                         'depth': retracement,
                         'low': pullback_low,
-                        'high': window['high'].max()
+                        'high': window['high'].max(),
+                        'touched_50': touched_50
                     }
             else: # bearish
                 pullback_high = window['high'].max()
@@ -61,20 +67,18 @@ class PullbackMeasurer:
                     
                 retracement = (pullback_high - impulse_low) / impulse_range
                 
+                touched_50 = (window['high'].max() - impulse_low) / impulse_range >= 0.5
+                if touch_50_required and not touched_50:
+                    continue
+                
                 if fib_min <= retracement <= fib_max:
-                    impulse_avg_body = np.abs(df.iloc[impulse['start_idx']:impulse['end_idx']+1]['close'] - 
-                                            df.iloc[impulse['start_idx']:impulse['end_idx']+1]['open']).mean()
-                    pullback_avg_body = np.abs(window['close'] - window['open']).mean()
-                    
-                    if self.config['require_slowdown'] and pullback_avg_body >= impulse_avg_body:
-                        continue
-                        
                     return {
                         'start_idx': start_idx,
                         'end_idx': current_idx,
                         'depth': retracement,
                         'high': pullback_high,
-                        'low': window['low'].min()
+                        'low': window['low'].min(),
+                        'touched_50': touched_50
                     }
                     
         return None

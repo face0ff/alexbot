@@ -8,94 +8,93 @@ from data.storage import DataStorage
 from pattern.detector import PatternDetector
 from features.engineer import FeatureEngineer
 from features.labels import Labeler
-from backtest.engine import BacktestEngine
-from backtest.metrics import MetricsCalculator
 from ml.train import MLTrainer
 
-# Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Настройка логирования
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def main():
-    symbol = 'ETH/USDT'
+    # Расширенный список ликвидных монет для обучения
+    symbols = [
+        'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT', 'XRP/USDT', 'LTC/USDT', 
+        'LINK/USDT', 'SOL/USDT', 'MATIC/USDT', 'DOT/USDT', 'AVAX/USDT', 'DOGE/USDT',
+        'SHIB/USDT', 'TRX/USDT', 'UNI/USDT', 'ATOM/USDT', 'ETC/USDT', 'BCH/USDT',
+        'FIL/USDT', 'NEAR/USDT', 'ALGO/USDT', 'APE/USDT', 'MANA/USDT', 'SAND/USDT',
+        'HBAR/USDT', 'QNT/USDT', 'VET/USDT', 'OP/USDT', 'GRT/USDT', 'EGLD/USDT'
+    ]
     timeframe = '1h'
-    start_date = '2022-01-01' # Extended range for ML
-    end_date = '2023-12-31'
-    data_path = f"data_{symbol.replace('/', '_')}_{timeframe}.parquet"
-
-    # 1. Data Engine
-    if not os.path.exists(data_path):
-        logger.info(f"Fetching data for {symbol} {timeframe}...")
-        fetcher = DataFetcher()
-        df = fetcher.fetch_ohlcv(symbol, timeframe, start_date, end_date)
-        
-        logger.info("Cleaning and calculating indicators...")
-        cleaner = DataCleaner()
-        df = cleaner.validate_data(df)
-        df = cleaner.calculate_indicators(df)
-        df = cleaner.identify_swings(df)
-        
-        DataStorage.save_to_parquet(df, data_path)
-    else:
-        logger.info(f"Loading data from {data_path}")
-        df = DataStorage.load_from_parquet(data_path)
-
-    # 2. Pattern Detector
-    logger.info("Running pattern detection...")
+    start_date = '2019-01-01'
+    end_date = '2024-12-31'
+    
+    fetcher = DataFetcher()
+    cleaner = DataCleaner()
     config_path = 'config/pattern_spec.json'
     detector = PatternDetector(config_path)
-    patterns = detector.detect_patterns(df)
+    fe = FeatureEngineer()
     
-    if not patterns:
-        logger.warning("No patterns found!")
-        return
-
-    # 3. Backtest (Rule-based)
-    logger.info("Running rule-based backtest...")
     with open(config_path, 'r') as f:
         config = json.load(f)
-    
-    bt_engine = BacktestEngine(config)
-    bt_results = bt_engine.run_backtest(patterns, df)
-    
-    metrics_calc = MetricsCalculator()
-    rule_metrics = metrics_calc.calculate(bt_results)
-
-    # 4. ML Phase
-    logger.info("Feature engineering and labeling...")
-    fe = FeatureEngineer()
-    X = fe.extract_features(patterns, df)
-    
     labeler = Labeler(config)
-    y = labeler.create_labels(patterns, df)
     
-    logger.info("Training ML model...")
+    all_data_frames = []
+    
+    for symbol in symbols:
+        data_path = f"data_{symbol.replace('/', '_')}_{timeframe}_longterm.parquet"
+        
+        # 1. Загрузка данных
+        if not os.path.exists(data_path):
+            logger.info(f"--- Скачивание истории {symbol} (2019-2024) ---")
+            df = fetcher.fetch_ohlcv(symbol, timeframe, start_date, end_date)
+            if df.empty:
+                logger.warning(f"Данные по {symbol} не получены.")
+                continue
+            
+            df = cleaner.validate_data(df)
+            df = cleaner.calculate_indicators(df)
+            df = cleaner.identify_swings(df)
+            DataStorage.save_to_parquet(df, data_path)
+        else:
+            logger.info(f"Загрузка из кэша: {symbol}")
+            df = DataStorage.load_from_parquet(data_path)
+            # Принудительно пересчитываем индикаторы, так как добавились новые (RSI, EMA)
+            df = cleaner.calculate_indicators(df)
+            df = cleaner.identify_swings(df)
+        
+        # 2. Поиск паттернов
+        logger.info(f"Поиск паттернов для {symbol}...")
+        # Используем стандартный детектор (Breakout), так как он дает точную разметку для обучения
+        patterns = detector.detect_patterns(df)
+        
+        if patterns:
+            # 3. Извлечение признаков и создание меток
+            X_sym = fe.extract_features(patterns, df)
+            y_sym = labeler.create_labels(patterns, df)
+            
+            all_data_frames.append((X_sym, y_sym))
+            logger.info(f"Добавлено {len(patterns)} примеров от {symbol}")
+
+    if not all_data_frames:
+        logger.error("Не найдено паттернов для обучения!")
+        return
+
+    # 4. Объединение данных
+    X = pd.concat([d[0] for d in all_data_frames], ignore_index=True)
+    y = pd.concat([d[1] for d in all_data_frames], ignore_index=True)
+
+    logger.info(f"ИТОГО: {len(X)} паттернов. Начинаю обучение...")
+
+    # 5. Обучение модели
     trainer = MLTrainer()
     model, ml_eval = trainer.train(X, y)
     trainer.save_model('trained_model.joblib')
-    logger.info("Model saved to trained_model.joblib")
     
-    # 5. ML-Filtered Backtest
-    logger.info("Evaluating ML-filtered results...")
-    # Use the model to predict on all patterns (for demonstration)
-    # In production, we'd use a proper walk-forward.
-    X_preds = model.predict(X)
-    ml_filtered_results = bt_results[X_preds == 1]
-    ml_metrics = metrics_calc.calculate(ml_filtered_results)
-
-    # Print Comparison
     print("\n" + "="*50)
-    print(f"STRATEGY COMPARISON: {symbol} {timeframe}")
+    print("ГЛУБОКОЕ ОБУЧЕНИЕ (2019-2024) ЗАВЕРШЕНО")
     print("="*50)
-    print(f"{'Metric':<20} | {'Rule-Based':<12} | {'ML-Filtered':<12}")
-    print("-" * 50)
-    for key in ['total_trades', 'win_rate', 'expectancy', 'profit_factor', 'net_profit_r']:
-        val_rule = f"{rule_metrics.get(key, 0):.3f}" if isinstance(rule_metrics.get(key), float) else str(rule_metrics.get(key, 0))
-        val_ml = f"{ml_metrics.get(key, 0):.3f}" if isinstance(ml_metrics.get(key), float) else str(ml_metrics.get(key, 0))
-        print(f"{key:<20} | {val_rule:<12} | {val_ml:<12}")
-    
-    print("="*50)
-    print("\nTop 5 Important Features for ML:")
+    print(f"Всего примеров: {len(X)}")
+    print(f"Точность (Accuracy): {ml_eval['accuracy']:.2%}")
+    print("\nТоп признаков:")
     sorted_features = sorted(ml_eval['feature_importance'].items(), key=lambda x: x[1], reverse=True)
     for feat, imp in sorted_features[:5]:
         print(f"- {feat}: {imp:.4f}")

@@ -15,7 +15,6 @@ class FeatureEngineer:
         for p in patterns:
             imp = p['impulse']
             pb = p['pullback']
-            struct = p['structure']
             
             # 1. Impulse features
             imp_df = df.iloc[imp['start_idx'] : imp['end_idx'] + 1]
@@ -39,11 +38,30 @@ class FeatureEngineer:
             wick_total = (pb_end_candle['high'] - pb_end_candle['low']) - np.abs(pb_end_candle['close'] - pb_end_candle['open'])
             wick_ratio = wick_total / (pb_end_candle['high'] - pb_end_candle['low']) if (pb_end_candle['high'] - pb_end_candle['low']) > 0 else 0
             
-            # 5. Structure break strength (momentum of the break candle)
-            break_candle = df.iloc[struct['entry_idx']]
-            break_strength = np.abs(break_candle['close'] - break_candle['open']) / (break_candle['high'] - break_candle['low']) if (break_candle['high'] - break_candle['low']) > 0 else 0
+            # 5. Structure break strength
+            if 'structure' in p:
+                entry_idx = p['structure']['entry_idx']
+                break_candle = df.iloc[entry_idx]
+                break_strength = np.abs(break_candle['close'] - break_candle['open']) / (break_candle['high'] - break_candle['low']) if (break_candle['high'] - break_candle['low']) > 0 else 0
+                
+                # NEW FEATURES
+                # Trend Context: distance from EMA 200 in % (normalized)
+                ema_val = break_candle['ema_200']
+                dist_from_ema = (break_candle['close'] - ema_val) / ema_val if ema_val > 0 else 0
+                
+                # RSI Context
+                rsi_val = break_candle['rsi']
+                
+                # Time Context
+                ts = pd.to_datetime(break_candle['timestamp'])
+                entry_hour = ts.hour
+            else:
+                break_strength = 0
+                dist_from_ema = 0
+                rsi_val = 50
+                entry_hour = 12
             
-            # 6. Volume profile (volume increase on impulse vs decrease on pullback)
+            # 6. Volume profile
             imp_vol_avg = imp_df['volume'].mean()
             pb_vol_avg = pb_df['volume'].mean()
             vol_ratio = imp_vol_avg / pb_vol_avg if pb_vol_avg > 0 else 1.0
@@ -57,7 +75,10 @@ class FeatureEngineer:
                 'extremum_wick_ratio': wick_ratio,
                 'structure_break_strength': break_strength,
                 'volume_ratio': vol_ratio,
-                'is_bullish': 1 if imp['type'] == 'bullish' else 0
+                'is_bullish': 1 if imp['type'] == 'bullish' else 0,
+                'trend_dist_ema': dist_from_ema,
+                'rsi_at_entry': rsi_val,
+                'hour': entry_hour
             }
             features_list.append(features)
             

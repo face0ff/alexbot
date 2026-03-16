@@ -4,7 +4,7 @@ from typing import List, Dict
 
 class Labeler:
     def __init__(self, config: Dict):
-        self.config = config['risk_management']
+        self.config = config.get('risk_management', config.get('pattern_specification', {}).get('risk_management', {}))
 
     def create_labels(self, patterns: List[Dict], df: pd.DataFrame) -> pd.Series:
         """
@@ -12,8 +12,8 @@ class Labeler:
         1 = Success (Profit target hit), 0 = Failure (Stop loss hit).
         """
         labels = []
-        max_bars = self.config['max_bars_in_trade']
-        atr_buffer = self.config['stop_loss']['buffer_atr']
+        max_bars = self.config.get('max_bars_in_trade', 40)
+        atr_buffer = self.config.get('stop_loss', {}).get('buffer_atr', 0.1)
         
         for p in patterns:
             imp = p['impulse']

@@ -4,7 +4,7 @@ from typing import List, Dict
 
 class ImpulseDetector:
     def __init__(self, config: Dict):
-        self.config = config['impulse_detection']
+        self.config = config.get('impulse_detection', config.get('pattern_specification', {}).get('impulse_detection', {}))
 
     def detect(self, df: pd.DataFrame) -> List[Dict]:
         """
@@ -12,10 +12,10 @@ class ImpulseDetector:
         Returns a list of impulse metadata.
         """
         impulses = []
-        min_candles = self.config['min_candles']
-        min_atr_mult = self.config['min_atr_multiplier']
-        min_body_ratio = self.config['min_body_ratio']
-        max_internal_retr = self.config['max_internal_retracement']
+        min_candles = self.config.get('min_candles', 4)
+        min_atr_mult = self.config.get('min_atr_multiplier', 2.0)
+        min_body_ratio = self.config.get('min_body_ratio', 0.6)
+        max_internal_retr = self.config.get('max_internal_retracement', 0.30)
 
         # We need a rolling window to detect sequences
         # For simplicity in this version, we'll use a sliding window approach

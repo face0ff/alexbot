@@ -7,3 +7,4 @@ pyarrow
 pyyaml
 pytest
 ta-lib
+aiogram>=3.0.0

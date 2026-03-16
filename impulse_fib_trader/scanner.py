@@ -32,7 +32,7 @@ class MarketScanner:
             print("Ошибка: Файл модели не найден! Сначала запустите python main.py")
             exit(1)
 
-    def scan_market(self, timeframe: str = '1h'):
+    def scan_market(self, timeframe: str = '1h', lookback: int = 3):
         symbols = self.fetcher.get_active_symbols()
         print(f"Сканирование {len(symbols)} пар на спотовом рынке ({timeframe})...")
         
@@ -41,7 +41,7 @@ class MarketScanner:
         start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
 
         for i, symbol in enumerate(symbols):
-            if i % 20 == 0:
+            if i % 50 == 0:
                 print(f"Прогресс: {i}/{len(symbols)}...")
                 
             try:
@@ -55,8 +55,8 @@ class MarketScanner:
                 patterns = self.detector.detect_patterns(df)
                 if not patterns: continue
                 
-                # Ищем паттерны, где вход был в последние 3 часа
-                latest_patterns = [p for p in patterns if p['structure']['entry_idx'] >= len(df) - 3]
+                # Используем lookback для фильтрации свежести паттернов
+                latest_patterns = [p for p in patterns if p['structure']['entry_idx'] >= len(df) - lookback]
                 
                 if latest_patterns:
                     X = self.fe.extract_features(latest_patterns, df)
@@ -90,29 +90,36 @@ class MarketScanner:
         # Сортируем по уверенности модели
         signals.sort(key=lambda x: x['ml_prob'], reverse=True)
         
+        risk_cfg = self.config.get('risk_management', {})
+        target_rr = risk_cfg.get('take_profit', {}).get('rr_min', 2.0)
+        
         for s in signals:
             symbol = s['symbol']
             p = s['pattern']
             prob = s['ml_prob']
             
             entry = p['structure']['entry_price']
-            sl_val = p['pullback']['low'] if p['impulse']['type'] == 'bullish' else p['pullback']['high']
+            # Берем стоп из структуры (хвост ложного пробоя) или из отката
+            sl = p['structure'].get('stop_loss')
+            if not sl:
+                sl_val = p['pullback']['low'] if p['impulse']['type'] == 'bullish' else p['pullback']['high']
+                sl = sl_val * 0.997 if p['impulse']['type'] == 'bullish' else sl_val * 1.003
             
-            # Расчет уровней
+            # Расчет Тейк-профита по RR
+            risk = abs(entry - sl)
             if p['impulse']['type'] == 'bullish':
-                sl = sl_val * 0.997 # 0.3% отступ под лоу
-                tp = entry + 2.0 * (entry - sl)
-                side = "LONG (Покупка)"
+                tp = entry + (risk * target_rr)
+                side = "LONG (Покупка после ложного пробоя)"
             else:
-                sl = sl_val * 1.003
-                tp = entry - 2.0 * (sl - entry)
-                side = "SHORT (Продажа)"
+                tp = entry - (risk * target_rr)
+                side = "SHORT (Продажа после ложного пробоя)"
                 
             print(f"\n[{symbol}] -> {side}")
             print(f"Доверие модели ML: {prob:.2%}")
             print(f"ЦЕНА ВХОДА: {entry:.6f}")
             print(f"СТОП-ЛОСС: {sl:.6f}")
             print(f"ТЕЙК-ПРОФИТ: {tp:.6f}")
+            print(f"Риск/Награда: 1:{target_rr}")
             print(f"Время формирования: {p['timestamp']}")
         
         print("\n" + "="*50)

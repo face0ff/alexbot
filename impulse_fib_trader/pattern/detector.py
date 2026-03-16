@@ -19,34 +19,55 @@ class PatternDetector:
 
     def detect_patterns(self, df: pd.DataFrame) -> List[Dict]:
         """
-        Runs the full detection pipeline.
+        Runs the full detection pipeline (for Breakout mode).
         """
         logger.info("Detecting impulses...")
         impulses = self.impulse_detector.detect(df)
-        logger.info(f"Found {len(impulses)} potential impulses.")
         
         patterns = []
         for imp in impulses:
-            # For each impulse, try to find a valid pullback
             pullback = self.pullback_measurer.measure(imp, df)
             if pullback:
-                # If pullback is valid, validate structure break
                 structure = self.structure_validator.validate(imp, pullback, df)
                 if structure:
-                    # Determine success (just a simple check for Phase 2)
-                    # Success = price moved further in impulse direction
                     success = self._evaluate_success(imp, structure, df)
-                    
                     patterns.append({
+                        'symbol': 'UNKNOWN', # To be filled by scanner
                         'impulse': imp,
                         'pullback': pullback,
                         'structure': structure,
                         'success': success,
                         'timestamp': df.iloc[imp['start_idx']]['timestamp']
                     })
-                    
-        logger.info(f"Found {len(patterns)} valid patterns.")
         return patterns
+
+    def detect_pending_patterns(self, df: pd.DataFrame) -> List[Dict]:
+        """
+        Detects patterns that are in the pullback phase (for Limit mode).
+        """
+        impulses = self.impulse_detector.detect(df)
+        pending = []
+        
+        for imp in impulses:
+            # Если импульс закончился совсем недавно (последние 12 свечей)
+            if imp['end_idx'] >= len(df) - 12:
+                pullback = self.pullback_measurer.measure(imp, df)
+                # Если цена сейчас в зоне 0.5 - 0.705
+                if pullback and pullback['end_idx'] >= len(df) - 2:
+                    # Рассчитываем идеальный вход 0.618
+                    fib_level = 0.618
+                    if imp['type'] == 'bullish':
+                        entry_price = imp['high'] - (imp['range'] * fib_level)
+                    else:
+                        entry_price = imp['low'] + (imp['range'] * fib_level)
+                        
+                    pending.append({
+                        'impulse': imp,
+                        'pullback': pullback,
+                        'limit_entry_price': entry_price,
+                        'timestamp': df.iloc[imp['start_idx']]['timestamp']
+                    })
+        return pending
 
     def _evaluate_success(self, impulse: Dict, structure: Dict, df: pd.DataFrame) -> bool:
         """
