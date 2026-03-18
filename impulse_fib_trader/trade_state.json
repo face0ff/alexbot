@@ -1,0 +1,110 @@
+[
+    {
+        "symbol": "1000SATS/USDT",
+        "real_entry_price": 1.248e-05,
+        "sl": -8.776e-05,
+        "tp": 0.00021251,
+        "amount": 801282.0,
+        "entry_time": "2026-03-17T08:16:05.962540",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "PEPE/USDT",
+        "real_entry_price": 3.67e-06,
+        "sl": -9.636e-05,
+        "tp": 0.00020379,
+        "amount": 2724795.0,
+        "entry_time": "2026-03-18T10:11:35.401626",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "KGST/USDT",
+        "real_entry_price": 0.01137,
+        "sl": 0.011290000000000001,
+        "tp": 0.011649999999999997,
+        "amount": 879.0,
+        "entry_time": "2026-03-18T14:58:13.877458",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "TLM/USDT",
+        "real_entry_price": 0.001761,
+        "sl": 0.001657,
+        "tp": 0.001975,
+        "amount": 5678.0,
+        "entry_time": "2026-03-18T17:14:37.439186",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "ACX/USDT",
+        "real_entry_price": 0.0432,
+        "sl": 0.0412,
+        "tp": 0.0463,
+        "amount": 231.4,
+        "entry_time": "2026-03-18T18:13:20.734942",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "ACH/USDT",
+        "real_entry_price": 0.00718,
+        "sl": 0.00701,
+        "tp": 0.007430000000000001,
+        "amount": 1392.0,
+        "entry_time": "2026-03-18T19:12:20.434264",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "COTI/USDT",
+        "real_entry_price": 0.01321,
+        "sl": 0.01284,
+        "tp": 0.013679999999999998,
+        "amount": 757.0,
+        "entry_time": "2026-03-18T19:51:43.836253",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "BMT/USDT",
+        "real_entry_price": 0.01643,
+        "sl": 0.01623,
+        "tp": 0.016709999999999992,
+        "amount": 608.6,
+        "entry_time": "2026-03-18T22:08:22.411508",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "\u5e01\u5b89\u4eba\u751f/USDT",
+        "real_entry_price": 0.0594,
+        "sl": 0.058499999999999996,
+        "tp": 0.0609,
+        "amount": 168.3,
+        "entry_time": "2026-03-18T22:28:04.498763",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "SAHARA/USDT",
+        "real_entry_price": 0.02482,
+        "sl": 0.02357,
+        "tp": 0.03098,
+        "amount": 402.0,
+        "entry_time": "2026-03-18T22:47:44.541026",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "KMNO/USDT",
+        "real_entry_price": 0.02208,
+        "sl": 0.02145,
+        "tp": 0.022859999999999995,
+        "amount": 452.0,
+        "entry_time": "2026-03-18T23:27:01.133121",
+        "status": "OPEN"
+    },
+    {
+        "symbol": "POWR/USDT",
+        "real_entry_price": 0.0651,
+        "sl": 0.0639,
+        "tp": 0.06659999999999999,
+        "amount": 153.0,
+        "entry_time": "2026-03-18T23:46:34.719067",
+        "status": "OPEN"
+    }
+]

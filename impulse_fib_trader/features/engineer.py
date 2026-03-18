@@ -3,83 +3,51 @@ import numpy as np
 from typing import List, Dict
 
 class FeatureEngineer:
-    def __init__(self):
-        pass
-
     def extract_features(self, patterns: List[Dict], df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Extracts features for each detected pattern.
-        """
-        features_list = []
+        features = []
         
+        if not patterns:
+            return pd.DataFrame()
+
+        is_tas = patterns[0].get('type') == 'TAS_v1'
+
         for p in patterns:
-            imp = p['impulse']
-            pb = p['pullback']
+            idx = p['entry_idx']
+            candle = df.iloc[idx]
             
-            # 1. Impulse features
-            imp_df = df.iloc[imp['start_idx'] : imp['end_idx'] + 1]
-            imp_duration = len(imp_df)
-            imp_range_abs = imp['range']
-            avg_atr = imp_df['atr'].mean()
-            imp_range_atr = imp_range_abs / avg_atr if avg_atr > 0 else 0
-            
-            # 2. Pullback features
-            pb_df = df.iloc[pb['start_idx'] : pb['end_idx'] + 1]
-            pb_duration = len(pb_df)
-            pb_depth = pb['depth']
-            
-            # 3. Volatility contraction (std of bodies in pb vs imp)
-            imp_bodies = np.abs(imp_df['close'] - imp_df['open'])
-            pb_bodies = np.abs(pb_df['close'] - pb_df['open'])
-            vol_contraction = pb_bodies.std() / imp_bodies.std() if imp_bodies.std() > 0 else 1.0
-            
-            # 4. Extremum wick ratio (at the end of pullback)
-            pb_end_candle = pb_df.iloc[-1]
-            wick_total = (pb_end_candle['high'] - pb_end_candle['low']) - np.abs(pb_end_candle['close'] - pb_end_candle['open'])
-            wick_ratio = wick_total / (pb_end_candle['high'] - pb_end_candle['low']) if (pb_end_candle['high'] - pb_end_candle['low']) > 0 else 0
-            
-            # 5. Structure break strength
-            if 'structure' in p:
-                entry_idx = p['structure']['entry_idx']
-                break_candle = df.iloc[entry_idx]
-                break_strength = np.abs(break_candle['close'] - break_candle['open']) / (break_candle['high'] - break_candle['low']) if (break_candle['high'] - break_candle['low']) > 0 else 0
-                
-                # NEW FEATURES
-                # Trend Context: distance from EMA 200 in % (normalized)
-                ema_val = break_candle['ema_200']
-                dist_from_ema = (break_candle['close'] - ema_val) / ema_val if ema_val > 0 else 0
-                
-                # RSI Context
-                rsi_val = break_candle['rsi']
-                
-                # Time Context
-                ts = pd.to_datetime(break_candle['timestamp'])
-                entry_hour = ts.hour
-            else:
-                break_strength = 0
-                dist_from_ema = 0
-                rsi_val = 50
-                entry_hour = 12
-            
-            # 6. Volume profile
-            imp_vol_avg = imp_df['volume'].mean()
-            pb_vol_avg = pb_df['volume'].mean()
-            vol_ratio = imp_vol_avg / pb_vol_avg if pb_vol_avg > 0 else 1.0
-            
-            features = {
-                'impulse_range_atr': imp_range_atr,
-                'impulse_duration': imp_duration,
-                'pullback_depth': pb_depth,
-                'pullback_duration': pb_duration,
-                'volatility_contraction': vol_contraction,
-                'extremum_wick_ratio': wick_ratio,
-                'structure_break_strength': break_strength,
-                'volume_ratio': vol_ratio,
-                'is_bullish': 1 if imp['type'] == 'bullish' else 0,
-                'trend_dist_ema': dist_from_ema,
-                'rsi_at_entry': rsi_val,
-                'hour': entry_hour
+            # Common features
+            f = {
+                'rsi': candle['rsi'],
+                'atr_ratio': candle['atr'] / candle['close'],
+                'dist_ema_20': (candle['close'] / candle['ema_20']) - 1,
+                'dist_ema_50': (candle['close'] / candle['ema_50']) - 1,
+                'volume_ratio': candle['volume'] / df.iloc[idx-20:idx]['volume'].mean() if idx > 20 else 1.0
             }
-            features_list.append(features)
             
-        return pd.DataFrame(features_list)
+            if is_tas:
+                # TAS Specific Features
+                tail_idx = p['tail_idx']
+                tail_candle = df.iloc[tail_idx]
+                
+                # Wick ratio of the tail
+                tail_range = tail_candle['high'] - tail_candle['low']
+                lower_wick = min(tail_candle['open'], tail_candle['close']) - tail_candle['low']
+                f['tail_wick_ratio'] = lower_wick / tail_range if tail_range > 0 else 0
+                
+                # Shelf characteristics
+                f['shelf_duration'] = idx - tail_idx
+                f['shelf_low_ratio'] = (p['shelf_low'] / p['tail_low']) - 1
+                f['breakout_power'] = (p['entry_price'] / p['breakout_level']) - 1
+                f['tail_volume_ratio'] = tail_candle['volume'] / df.iloc[tail_idx-10:tail_idx]['volume'].mean() if tail_idx > 10 else 1.0
+            else:
+                # Impulse Fib Specific Features
+                imp = p['impulse']
+                pb = p['pullback']
+                f['impulse_pct'] = (imp['end_price'] / imp['start_price']) - 1
+                f['pullback_depth'] = p['pullback']['depth']
+                f['impulse_duration'] = imp['end_idx'] - imp['start_idx']
+                f['pullback_duration'] = pb['end_idx'] - pb['start_idx']
+
+            features.append(f)
+            
+        return pd.DataFrame(features)

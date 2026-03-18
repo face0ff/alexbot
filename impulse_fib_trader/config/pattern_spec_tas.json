@@ -1,0 +1,84 @@
+{
+  "name": "Tails_and_Shelves",
+  "id": "TAS_v1",
+  "market_context": {
+    "required_structure": "downtrend_or_bearish_leg",
+    "setup_type": "bullish_reversal_accumulation",
+    "key_concept": "liquidity_grab_with_shelf_building"
+  },
+  "phase_1_initial_drop": {
+    "description": "Bearish momentum creating selling climax",
+    "momentum_criteria": {
+      "min_consecutive_bearish": 2,
+      "velocity": "high_momentum",
+      "context": "approaching_support_or_prior_low"
+    }
+  },
+  "phase_2_liquidity_tail": {
+    "description": "Sharp local low with rejection wick (tail)",
+    "extreme_criteria": {
+      "wick_characteristics": {
+        "lower_wick_ratio": 0.40,
+        "body_position": 0.66,
+        "rejection_strength": "strong_close_off_lows"
+      },
+      "volume_signature": "climax_or_exhaustion",
+      "tail_name": "liquidity_grab_wick"
+    }
+  },
+  "phase_3_sharp_retracement": {
+    "description": "V-shaped bounce to define breakout_level",
+    "breakout_level_calculation": {
+      "point_a": "tail_low",
+      "point_b": "retracement_high",
+      "min_move_percent": 0.005,
+      "max_move_percent": 0.05,
+      "candle_requirements": {
+        "count": 3,
+        "momentum": "strong_bullish_displacement"
+      }
+    }
+  },
+  "phase_4_shelf_formation": {
+    "description": "Secondary decline creating saucer/bowl near lows",
+    "shelf_characteristics": {
+      "shape": "rounded_bottom_or_ascending_triangle",
+      "price_action": "higher_lows_sequence",
+      "test_of_extreme": {
+        "allow_wick_below": true,
+        "body_rejection": true,
+        "close_above_tail_low": true,
+        "max_deviation_atr": 0.3
+      },
+      "consolidation": {
+        "min_candles": 3,
+        "max_candles": 8,
+        "slope": "neutral_to_bullish_bias",
+        "volume": "declining_then_expanding"
+      },
+      "micro_structure": "accumulation_schematics"
+    }
+  },
+  "entry_trigger": {
+    "aggressive_entry": {
+      "name": "momentum_breakout",
+      "trigger": "close_above_breakout_level",
+      "candle_specifications": {
+        "type": "full_body_bullish",
+        "body_ratio": 0.70,
+        "close_position": 0.9,
+        "momentum": "strong_displacement",
+        "volume": "above_average"
+      }
+    }
+  },
+  "risk_management": {
+    "stop_loss": {
+      "location": "below_shelf_micro_low_or_tail_low",
+      "buffer_atr": 0.15
+    },
+    "take_profit": {
+      "rr_min": 2.0
+    }
+  }
+}
