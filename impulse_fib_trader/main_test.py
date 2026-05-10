@@ -2,13 +2,14 @@ import pandas as pd
 import numpy as np
 import json
 import os
+from datetime import datetime
 from pattern.tas_detector import ImpulseRejectionDetector
 from data.fetcher import DataFetcher
 from data.cleaner import DataCleaner
 from ml.train import MLTrainer
 from features.engineer import FeatureEngineer
 
-def test_rejection_oos():
+def test_rejection_2025():
     config_path = 'impulse_fib_trader/config/pattern_spec_tas.json'
     with open(config_path, 'r') as f: config = json.load(f)
     detector = ImpulseRejectionDetector(config)
@@ -16,21 +17,30 @@ def test_rejection_oos():
     fe = FeatureEngineer()
     trainer = MLTrainer()
     
-    model_path = 'trained_model_tas_2023.joblib'
-    if not os.path.exists(model_path): return
+    # Initialize path
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(base_dir)
+    model_path = os.path.join(project_root, 'trained_model_tas_21_24.joblib')
+    if not os.path.exists(model_path):
+        print(f"Model 21-24 not found at {model_path}!")
+        return
     trainer.load_model(model_path)
 
-    symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT']
+    symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'LTC/USDT']
     fetcher = DataFetcher()
     results = []
 
-    print(f"--- HYBRID (Trend + Rejection) TEST 2024 ---")
+    print(f"--- 2025 TEST (OOS) ---")
     print(f"{'Symbol':<10} | {'Trades':<7} | {'Winrate':<8} | {'Profit (R)':<10} | {'PF':<5}")
     print("-" * 60)
 
+    # Текущая дата для конца теста
+    today = datetime.now().strftime('%Y-%m-%d')
+
     for symbol in symbols:
-        df = fetcher.fetch_ohlcv(symbol, '1h', '2024-01-01', '2024-12-31')
-        if df.empty: continue
+        df = fetcher.fetch_ohlcv(symbol, '1h', '2025-01-01', today)
+        if df.empty or len(df) < 200: continue
+        
         df = cleaner.validate_data(df)
         df = cleaner.calculate_indicators(df)
         patterns = detector.detect_patterns(df)
@@ -69,7 +79,7 @@ def test_rejection_oos():
     if results:
         res_arr = np.array(results)
         print("-" * 60)
-        print(f"ИТОГО: {len(res_arr)} сделок | Профит: {res_arr.sum():.1f} R | Winrate: {len(res_arr[res_arr > 0])/len(res_arr):.2%} | PF: {res_arr[res_arr > 0].sum()/abs(res_arr[res_arr < 0].sum()):.2f}")
+        print(f"ИТОГО 2025: {len(res_arr)} сделок | Профит: {res_arr.sum():.1f} R | Winrate: {len(res_arr[res_arr > 0])/len(res_arr):.2%} | PF: {res_arr[res_arr > 0].sum()/abs(res_arr[res_arr < 0].sum()):.2f}")
 
 if __name__ == "__main__":
-    test_rejection_oos()
+    test_rejection_2025()

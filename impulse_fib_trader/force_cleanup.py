@@ -1,96 +1,82 @@
+
+import asyncio
 import ccxt
 import json
 import os
 import logging
-from datetime import datetime
-from config.config import BINANCE_API_KEY, BINANCE_API_SECRET
+try:
+    from config.config import BINANCE_API_KEY, BINANCE_API_SECRET
+except ModuleNotFoundError:
+    from impulse_fib_trader.config.config import BINANCE_API_KEY, BINANCE_API_SECRET
+
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("Cleanup")
 
-def force_exit_triggered_trades():
+async def force_cleanup():
     exchange = ccxt.binance({
         'apiKey': BINANCE_API_KEY,
         'secret': BINANCE_API_SECRET,
         'enableRateLimit': True,
         'options': {'defaultType': 'spot'}
     })
-
+    
     state_file = 'impulse_fib_trader/trade_state.json'
     history_file = 'impulse_fib_trader/trade_history.json'
-
+    
     if not os.path.exists(state_file):
-        print("Файл активных сделок не найден.")
+        print("Стейт-файл не найден.")
         return
 
     with open(state_file, 'r') as f:
-        active_trades = json.load(f)
-
-    if not active_trades:
-        print("Нет активных сделок для проверки.")
+        trades = json.load(f)
+    
+    if not trades:
+        print("Нет активных сделок для очистки.")
         return
 
-    updated_active = []
-    closed_count = 0
-
-    print(f"--- Проверка {len(active_trades)} сделок на пересечение уровней ---")
-
-    for trade in active_trades:
-        symbol = trade['symbol']
+    print(f"Найдено сделок: {len(trades)}")
+    
+    remaining_trades = []
+    
+    for t in trades:
+        symbol = t['symbol']
+        print(f"Обработка {symbol}...")
         try:
-            ticker = exchange.fetch_ticker(symbol)
-            current_price = ticker['last']
-            sl = trade['sl']
-            tp = trade['tp']
+            # Пытаемся продать на бирже
+            balance = exchange.fetch_balance()
+            base = symbol.split('/')[0]
+            qty = balance['free'].get(base, 0)
             
-            exit_reason = None
-            if current_price >= tp:
-                exit_reason = "TAKE_PROFIT (LATENT)"
-            elif current_price <= sl:
-                exit_reason = "STOP_LOSS (LATENT)"
-            
-            if exit_reason:
-                print(f"⚠️ {symbol} отработал уровень! Цена: {current_price}, TP: {tp}, SL: {sl}. ЗАКРЫВАЮ...")
+            if qty > 0:
+                print(f"Продажа {qty} {base} по рынку...")
+                order = exchange.create_order(symbol, 'market', 'sell', exchange.amount_to_precision(symbol, qty))
+                exit_p = order.get('average', order.get('price', 0))
+                print(f"Успешно продано {symbol} по {exit_p}")
                 
-                # Продаем по рынку
-                order = exchange.create_order(symbol, 'market', 'sell', trade['amount'])
-                exit_price = order['average'] if order.get('average') else current_price
+                # Записываем в историю как принудительное закрытие
+                t['exit_price'] = exit_p
+                t['exit_time'] = "FORCED_CLEANUP"
+                t['status'] = 'CLOSED'
+                t['pnl_usdt'] = (exit_p - t['real_entry_price']) * t['amount']
                 
-                pnl = (exit_price - trade['real_entry_price']) * trade['amount']
-                trade['exit_price'] = exit_price
-                trade['exit_time'] = datetime.now().isoformat()
-                trade['exit_reason'] = exit_reason
-                trade['pnl_usdt'] = pnl
-                
-                # Сохраняем в историю
-                save_to_history(history_file, trade)
-                closed_count += 1
-                print(f"✅ {symbol} закрыт. PnL: {pnl:.2f} USDT")
+                with open(history_file, 'r') as hf:
+                    history = json.load(hf)
+                history.append(t)
+                with open(history_file, 'w') as hf:
+                    json.dump(history, hf, indent=4)
             else:
-                # Цена еще внутри диапазона
-                print(f"⏳ {symbol} в игре. Цена: {current_price:.6g} (Диапазон: {sl:.6g} - {tp:.6g})")
-                updated_active.append(trade)
+                print(f"На балансе нет {base}. Просто удаляю из стейта.")
                 
         except Exception as e:
-            print(f"❌ Ошибка при проверке {symbol}: {e}")
-            updated_active.append(trade)
+            print(f"Ошибка при закрытии {symbol}: {e}")
+            print("Сделка будет удалена из списка активных без продажи.")
 
-    # Сохраняем обновленный стейт
+    # Очищаем стейт
     with open(state_file, 'w') as f:
-        json.dump(updated_active, f, indent=4)
+        json.dump([], f)
     
-    print("\n--- Ревизия завершена. Закрыто сделок: {} ---".format(closed_count))
-
-def save_to_history(history_file, trade_data):
-    history = []
-    if os.path.exists(history_file):
-        with open(history_file, 'r') as f:
-            try:
-                history = json.load(f)
-            except: pass
-    history.append(trade_data)
-    with open(history_file, 'w') as f:
-        json.dump(history, f, indent=4)
+    print("\n✅ Стейт очищен. Теперь бот сможет искать новые сделки (когда на балансе будут USDT).")
 
 if __name__ == "__main__":
-    force_exit_triggered_trades()
+    asyncio.run(force_cleanup())

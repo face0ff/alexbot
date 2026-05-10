@@ -51,30 +51,62 @@ class BacktestEngine:
             trade_result = None
             exit_idx = None
             exit_price = None
+            max_p = entry_price if imp['type'] == 'bullish' else entry_price
+            current_sl = sl
+            
+            # Настройки (можно вынести в конфиг)
+            BE_TRIGGER = 0.012 
+            BE_LEVEL = 0.002
+            TRAILING_TRIGGER = 0.02
+            TRAILING_DIST = 0.012
             
             for i in range(entry_idx + 1, min(entry_idx + max_bars + 1, len(df))):
                 high = df.iloc[i]['high']
                 low = df.iloc[i]['low']
+                close = df.iloc[i]['close']
                 
                 if imp['type'] == 'bullish':
-                    if low <= sl:
-                        trade_result = -1.0
+                    if high > max_p: max_p = high
+                    
+                    # Логика безубытка
+                    if (max_p / entry_price - 1) >= BE_TRIGGER:
+                        be_sl = entry_price * (1 + BE_LEVEL)
+                        if be_sl > current_sl: current_sl = be_sl
+                    
+                    # Логика трейлинга
+                    if (max_p / entry_price - 1) >= TRAILING_TRIGGER:
+                        t_sl = max_p * (1 - TRAILING_DIST)
+                        if t_sl > current_sl: current_sl = t_sl
+
+                    if low <= current_sl:
+                        trade_result = (current_sl - entry_price) / risk
                         exit_idx = i
-                        exit_price = sl
+                        exit_price = current_sl
                         break
                     if high >= tp:
-                        trade_result = 2.5
+                        trade_result = (tp - entry_price) / risk
                         exit_idx = i
                         exit_price = tp
                         break
                 else:
-                    if high >= sl:
-                        trade_result = -1.0
+                    # Bearish logic (optional, mainly spot bot but for completeness)
+                    if low < max_p: max_p = low # max_p here is min_p
+                    
+                    if (entry_price / max_p - 1) >= BE_TRIGGER:
+                        be_sl = entry_price * (1 - BE_LEVEL)
+                        if be_sl < current_sl: current_sl = be_sl
+                        
+                    if (entry_price / max_p - 1) >= TRAILING_TRIGGER:
+                        t_sl = max_p * (1 + TRAILING_DIST)
+                        if t_sl < current_sl: current_sl = t_sl
+
+                    if high >= current_sl:
+                        trade_result = (entry_price - current_sl) / risk
                         exit_idx = i
-                        exit_price = sl
+                        exit_price = current_sl
                         break
                     if low <= tp:
-                        trade_result = 2.5
+                        trade_result = (entry_price - tp) / risk
                         exit_idx = i
                         exit_price = tp
                         break

@@ -13,7 +13,7 @@ class DataCleaner:
 
     @staticmethod
     def calculate_indicators(df: pd.DataFrame, atr_period: int = 14) -> pd.DataFrame:
-        """Calculates ATR, EMA 20, 50, 200, and RSI."""
+        """Calculates ATR, EMA 20, 50, 200, RSI, and MACD."""
         if df.empty: return df
         
         # ATR
@@ -35,6 +35,13 @@ class DataCleaner:
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
         df['rsi'] = 100 - (100 / (1 + rs))
+
+        # MACD
+        exp1 = df['close'].ewm(span=12, adjust=False).mean()
+        exp2 = df['close'].ewm(span=26, adjust=False).mean()
+        df['macd'] = exp1 - exp2
+        df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+        df['macd_hist'] = df['macd'] - df['macd_signal']
         
         return df
 

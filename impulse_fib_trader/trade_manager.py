@@ -9,10 +9,24 @@ logger = logging.getLogger(__name__)
 
 class TradeManager:
     def __init__(self, state_file='trade_state.json', history_file='trade_history.json'):
-        # Используем абсолютные пути для надежности
         base_dir = os.path.dirname(os.path.abspath(__file__))
         self.state_file = os.path.join(base_dir, state_file)
         self.history_file = os.path.join(base_dir, history_file)
+        self.FEE_RATE = 0.001 
+        
+        # --- GRID STRATEGIES ---
+        self.STRATEGIES = {
+            'MARTI_CONS': {
+                'weights': [1, 1.5, 2.5],
+                'dists': [0, 0.45, 0.8] # Multiplier of initial risk
+            },
+            'FIB_GRID': {
+                'weights': [1, 2, 3],
+                'dists': [0, 0.38, 0.62]
+            }
+        }
+        self.current_strategy = 'MARTI_CONS'
+        self.MAX_ACTIVE_TRADES = 1 # Ограничение количества одновременно открытых сделок
         
         self.exchange = ccxt.binance({
             'apiKey': BINANCE_API_KEY,
@@ -20,224 +34,255 @@ class TradeManager:
             'enableRateLimit': True,
             'options': {'defaultType': 'spot'}
         })
+        try:
+            self.exchange.load_markets()
+        except Exception as e:
+            logger.error(f"Failed to load markets: {e}")
+            
         self.active_trades = self._load_state()
+
+    def set_strategy(self, name):
+        if name in self.STRATEGIES:
+            self.current_strategy = name
+            return True
+        return False
 
     def _load_state(self):
         if os.path.exists(self.state_file):
             try:
                 with open(self.state_file, 'r') as f:
                     data = json.load(f)
+                    # Support legacy state and new current_strategy
+                    if isinstance(data, dict):
+                        self.current_strategy = data.get('strategy', 'MARTI_CONS')
+                        return data.get('trades', [])
                     return data if isinstance(data, list) else []
-            except Exception:
+            except Exception as e:
+                logger.error(f"Error loading state: {e}")
                 return []
         return []
 
     def _save_state(self):
-        with open(self.state_file, 'w') as f:
-            json.dump(self.active_trades, f, indent=4)
+        try:
+            with open(self.state_file, 'w') as f:
+                json.dump({
+                    'strategy': self.current_strategy,
+                    'trades': self.active_trades
+                }, f, indent=4)
+        except Exception as e:
+            logger.error(f"Failed to save state: {e}")
 
     def _save_history(self, trade_data):
         history = []
         if os.path.exists(self.history_file):
             try:
-                with open(self.history_file, 'r') as f:
-                    history = json.load(f)
-            except Exception:
-                pass
+                with open(self.history_file, 'r') as f: history = json.load(f)
+            except: pass
         history.append(trade_data)
         with open(self.history_file, 'w') as f:
             json.dump(history, f, indent=4)
-
-    def get_cooldown_symbols(self, hours=4):
-        """Возвращает список символов, по которым недавно были сделки."""
-        cooldown_symbols = []
-        if not os.path.exists(self.history_file):
-            return cooldown_symbols
-            
-        try:
-            with open(self.history_file, 'r') as f:
-                history = json.load(f)
-            
-            cutoff = datetime.now() - timedelta(hours=hours)
-            for t in history:
-                entry_time = datetime.fromisoformat(t['entry_time'])
-                if entry_time > cutoff:
-                    if t['symbol'] not in cooldown_symbols:
-                        cooldown_symbols.append(t['symbol'])
-        except Exception as e:
-            logger.error(f"Error checking cooldown: {e}")
-            
-        return cooldown_symbols
 
     def get_balance(self, currency='USDT'):
         try:
             balance = self.exchange.fetch_balance()
             return balance['free'].get(currency, 0.0)
         except Exception as e:
-            logger.error(f"Ошибка баланса: {e}")
+            logger.error(f"Balance error: {e}")
             return 0.0
 
-    def enter_trade(self, symbol, entry_price, sl, tp, side, amount_usdt=10):
+    def enter_trade(self, symbol, entry_price, sl, tp, side='buy', amount_usdt=10):
         if any(t['symbol'] == symbol for t in self.active_trades):
-            return False, f"Сделка по {symbol} уже открыта."
-
-        try:
-            # 1. Покупка по маркету
-            approx_amount = amount_usdt / entry_price
-            params = {'quoteOrderQty': self.exchange.cost_to_precision(symbol, amount_usdt)}
-            order = self.exchange.create_order(symbol, 'market', 'buy', approx_amount, None, params)
+            return False, "Already in trade"
             
-            real_entry = order['average'] if order.get('average') else order.get('price', entry_price)
-            filled_amount = order['filled'] if order.get('filled') else order['amount']
+        if len(self.active_trades) >= self.MAX_ACTIVE_TRADES:
+            return False, f"Limit reached ({self.MAX_ACTIVE_TRADES} trade active)"
+
+        risk_unit = entry_price - sl
+        if risk_unit <= 0: return False, "Invalid SL for Long"
+
+        strat = self.STRATEGIES[self.current_strategy]
+        
+        try:
+            # Entry 1 (Market)
+            first_weight = strat['weights'][0]
+            first_qty_usdt = amount_usdt * first_weight
+            params = {'quoteOrderQty': self.exchange.cost_to_precision(symbol, first_qty_usdt)}
+            order = self.exchange.create_order(symbol, 'market', 'buy', None, None, params)
+            
+            real_entry = order.get('average') or order.get('price') or entry_price
+            filled_qty = order.get('filled') or order.get('amount') or 0
+            
+            if filled_qty == 0: return False, "Order failed"
+
+            # Create Sub-orders for Grid (Limit Orders)
+            grid_orders = []
+            for i in range(1, len(strat['weights'])):
+                price = real_entry - risk_unit * strat['dists'][i]
+                qty_usdt = amount_usdt * strat['weights'][i]
+                
+                # We calculate qty based on price since it's a limit order
+                qty = qty_usdt / price
+                try:
+                    limit_order = self.exchange.create_order(symbol, 'limit', 'buy', 
+                                                           self.exchange.amount_to_precision(symbol, qty), 
+                                                           self.exchange.price_to_precision(symbol, price))
+                    grid_orders.append({
+                        'id': limit_order['id'],
+                        'price': price,
+                        'weight': strat['weights'][i],
+                        'filled': False
+                    })
+                except Exception as le:
+                    logger.error(f"Limit order failed for {symbol}: {le}")
 
             new_trade = {
                 'symbol': symbol,
-                'real_entry_price': real_entry,
-                'sl': sl,
-                'tp': tp,
-                'amount': filled_amount,
-                'entry_time': datetime.now().isoformat(),
+                'strategy': self.current_strategy,
+                'initial_risk': risk_unit,
+                'sl': float(sl),
+                'tp': float(tp), # Initial TP
+                'entries': [{
+                    'price': float(real_entry),
+                    'qty': float(filled_qty),
+                    'weight': first_weight,
+                    'time': datetime.now().isoformat()
+                }],
+                'grid_orders': grid_orders,
                 'status': 'OPEN'
             }
             
             self.active_trades.append(new_trade)
             self._save_state()
-            return True, f"✅ Куплено {symbol} по {real_entry:.6g}. Бот следит за ценой для выхода."
+            return True, f"Entered {symbol} with {self.current_strategy} grid"
 
         except Exception as e:
-            logger.error(f"Trade entry failed: {e}")
+            logger.error(f"Execution error: {e}")
             return False, str(e)
 
     def check_trade_exit(self):
         closed_messages = []
         remaining_trades = []
-
-        self.exchange.load_markets()
-
-        try:
-            balance = self.exchange.fetch_balance()
-            total_balances = balance['total']
-        except Exception as e:
-            logger.error(f"Не удалось получить баланс: {e}")
-            return []
-
+        
         for trade in self.active_trades:
+            if 'grid_orders' not in trade:
+                logger.warning(f"Legacy trade detected for {trade.get('symbol')}, skipping grid check.")
+                remaining_trades.append(trade)
+                continue
+
             try:
-                symbol = trade['symbol']
-                base_asset = symbol.split('/')[0]
-                actual_qty = total_balances.get(base_asset, 0.0)
+                # 1. Fetch data for RSI calculation
+                ohlcv = self.exchange.fetch_ohlcv(trade['symbol'], timeframe='15m', limit=30)
+                df_exit = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                 
-                if actual_qty < trade['amount'] * 0.1:
-                    logger.info(f"Обнаружено внешнее закрытие для {symbol}.")
-                    exit_price = None
-                    try:
-                        my_trades = self.exchange.fetch_my_trades(symbol, limit=20)
-                        for t in reversed(my_trades):
-                            if t['side'] == 'sell':
-                                exit_price = t['price']
-                                break
-                    except Exception: pass
+                # Simple RSI Calculation
+                delta = df_exit['close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                rs = gain / loss
+                df_exit['rsi'] = 100 - (100 / (1 + rs))
+                curr_rsi = df_exit['rsi'].iloc[-1]
+                current_price = df_exit['close'].iloc[-1]
 
-                    if exit_price:
-                        self._process_exit(trade, exit_price, "EXTERNAL_EXIT", closed_messages)
-                    else:
-                        ticker = self.exchange.fetch_ticker(symbol)
-                        self._process_exit(trade, ticker['last'], "EXTERNAL_EXIT_UNKNOWN", closed_messages)
-                    continue
+                # 2. Check Grid Fills
+                for g_order in trade['grid_orders']:
+                    if not g_order['filled']:
+                        o_status = self.exchange.fetch_order(g_order['id'], trade['symbol'])
+                        if o_status['status'] == 'closed':
+                            g_order['filled'] = True
+                            trade['entries'].append({
+                                'price': o_status['average'] or o_status['price'],
+                                'qty': o_status['filled'],
+                                'weight': g_order['weight'],
+                                'time': datetime.now().isoformat()
+                            })
+                            logger.info(f"✅ GRID FILL: {trade['symbol']} level filled!")
 
-                ticker = self.exchange.fetch_ticker(symbol)
-                current_price = ticker['last']
+                # 3. Update Stats
+                total_qty = sum(e['qty'] for e in trade['entries'])
+                total_cost = sum(e['price'] * e['qty'] for e in trade['entries'])
+                avg_price = total_cost / total_qty
+                
+                # Dynamic TP Logic
+                if len(trade['entries']) > 1:
+                    new_tp = avg_price + trade['initial_risk'] * 0.3
+                    trade['tp'] = new_tp
+
+                # --- RSI PROFIT GUARD LOGIC ---
+                curr_pnl_pct = (current_price / avg_price - 1) * 100
+                if 'rsi_armed' not in trade: trade['rsi_armed'] = False
                 
                 exit_reason = None
-                if current_price >= trade['tp']:
-                    exit_reason = "TAKE_PROFIT"
-                elif current_price <= trade['sl']:
-                    exit_reason = "STOP_LOSS"
+                
+                # Check for RSI Reversal if in profit
+                if curr_pnl_pct > 0.3: # Only if at least slightly in profit
+                    if curr_rsi >= 70: trade['rsi_armed'] = True
+                    
+                    if trade['rsi_armed'] and curr_rsi < 65:
+                        exit_reason = f"RSI_GUARD (RSI:{curr_rsi:.1f})"
+                
+                if current_price >= trade['tp']: exit_reason = "TAKE_PROFIT"
+                elif current_price <= trade['sl']: exit_reason = "STOP_LOSS"
 
                 if exit_reason:
-                    try:
-                        open_orders = self.exchange.fetch_open_orders(symbol)
-                        for order in open_orders:
-                            self.exchange.cancel_order(order['id'], symbol)
-                    except Exception: pass
+                    # Sell All
+                    sell_order = self.exchange.create_order(trade['symbol'], 'market', 'sell', 
+                                                           self.exchange.amount_to_precision(trade['symbol'], total_qty))
+                    exit_p = sell_order.get('average') or current_price
+                    pnl = (exit_p - avg_price) * total_qty
+                    
+                    # Cancel remaining grid orders
+                    for g_order in trade['grid_orders']:
+                        if not g_order['filled']:
+                            try: self.exchange.cancel_order(g_order['id'], trade['symbol'])
+                            except: pass
 
-                    try:
-                        balance = self.exchange.fetch_balance()
-                        free_qty = balance['free'].get(base_asset, 0.0)
-                        qty_to_sell = self.exchange.amount_to_precision(symbol, free_qty)
-                        
-                        if free_qty > 0:
-                            order = self.exchange.create_order(symbol, 'market', 'sell', qty_to_sell)
-                            exit_p = order.get('average', current_price)
-                            self._process_exit(trade, exit_p, exit_reason, closed_messages)
-                        else:
-                            self._process_exit(trade, current_price, "MANUAL_EXIT_SYNC", closed_messages)
-                    except Exception as e:
-                        logger.error(f"Sell failed for {symbol}: {e}")
-                        remaining_trades.append(trade)
+                    trade.update({
+                        'exit_price': exit_p,
+                        'avg_entry': avg_price,
+                        'exit_time': datetime.now().isoformat(),
+                        'exit_reason': exit_reason,
+                        'pnl_usdt': pnl,
+                        'status': 'CLOSED'
+                    })
+                    self._save_history(trade)
+                    closed_messages.append(f"✅ <b>CLOSED: {trade['symbol']}</b> ({trade['strategy']})\nReason: {exit_reason}\nPnL: <b>{pnl:+.2f} USDT</b>")
                 else:
                     remaining_trades.append(trade)
-
             except Exception as e:
-                logger.error(f"Error checking {trade['symbol']}: {e}")
+                logger.error(f"Check error {trade['symbol']}: {e}")
                 remaining_trades.append(trade)
 
-        if len(remaining_trades) != len(self.active_trades):
-            self.active_trades = remaining_trades
-            self._save_state()
+        self.active_trades = remaining_trades
+        self._save_state()
         return closed_messages
 
     def manual_market_exit(self, symbol):
-        trade = next((t for t in self.active_trades if t['symbol'] == symbol), None)
-        if not trade:
-            return False, f"Сделка по {symbol} не найдена."
-
+        trade_idx = next((i for i, t in enumerate(self.active_trades) if t['symbol'] == symbol), None)
+        if trade_idx is None: return False, "Trade not found"
+        
+        trade = self.active_trades.pop(trade_idx)
         try:
-            self.exchange.load_markets()
-            try:
-                open_orders = self.exchange.fetch_open_orders(symbol)
-                for order in open_orders:
-                    self.exchange.cancel_order(order['id'], symbol)
-            except Exception: pass
-
-            balance = self.exchange.fetch_balance()
-            base_asset = symbol.split('/')[0]
-            free_qty = balance['free'].get(base_asset, 0.0)
+            total_qty = sum(e['qty'] for e in trade['entries'])
+            self.exchange.create_order(symbol, 'market', 'sell', self.exchange.amount_to_precision(symbol, total_qty))
             
-            if free_qty > 0:
-                qty_to_sell = self.exchange.amount_to_precision(symbol, free_qty)
-                order = self.exchange.create_order(symbol, 'market', 'sell', qty_to_sell)
-                exit_price = order.get('average', order.get('price'))
-            else:
-                ticker = self.exchange.fetch_ticker(symbol)
-                exit_price = ticker['last']
+            # Cancel grid orders
+            for g_order in trade['grid_orders']:
+                if not g_order['filled']:
+                    try: self.exchange.cancel_order(g_order['id'], symbol)
+                    except: pass
 
-            # _process_exit сам добавит в историю и изменит статус
-            self._process_exit(trade, exit_price, "MANUAL_FIX_PROFIT", [])
-            
-            # Удаляем из активных и сохраняем стейт
-            self.active_trades = [t for t in self.active_trades if t['symbol'] != symbol]
+            trade.update({'status': 'MANUAL_CLOSED', 'exit_time': datetime.now().isoformat()})
+            self._save_history(trade)
             self._save_state()
-            
-            return True, f"✅ {symbol} продан по {exit_price:.6g}."
+            return True, f"Manual closed {symbol}"
         except Exception as e:
+            self.active_trades.append(trade)
             return False, str(e)
 
-    def _process_exit(self, trade, exit_price, reason, messages_list):
-        pnl = (exit_price - trade['real_entry_price']) * trade['amount']
-        trade['exit_price'] = exit_price
-        trade['exit_time'] = datetime.now().isoformat()
-        trade['exit_reason'] = reason
-        trade['pnl_usdt'] = pnl
-        trade['status'] = 'CLOSED'
-        self._save_history(trade)
-        messages_list.append(f"🔔 **Сделка закрыта ({reason})!**\nПара: {trade['symbol']}\nPnL: {pnl:.2f} USDT")
-
     def get_stats(self):
-        if not os.path.exists(self.history_file): return "История пуста."
+        if not os.path.exists(self.history_file): return "No history yet."
         try:
-            with open(self.history_file, 'r') as f:
-                history = json.load(f)
+            with open(self.history_file, 'r') as f: history = json.load(f)
             pnl = sum([t.get('pnl_usdt', 0) for t in history])
-            return f"📊 **Статистика**\nСделок: {len(history)}\nПрофит: {pnl:.2f} USDT"
-        except Exception: return "Ошибка статистики."
+            return f"📊 <b>Total PnL: {pnl:.2f} USDT</b>\nTrades: {len(history)}"
+        except: return "Error loading stats."

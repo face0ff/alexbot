@@ -1,0 +1,295 @@
+{
+    "weights": {
+        "PEPE/USDT": 1.0,
+        "TAO/USDT": 0.79,
+        "XPL/USDT": 0.78,
+        "DOGE/USDT": 0.73,
+        "UNI/USDT": 0.69,
+        "ICP/USDT": 0.69,
+        "ZEC/USDT": 0.64,
+        "ARB/USDT": 0.64,
+        "ASTER/USDT": 0.6,
+        "TRX/USDT": 0.55,
+        "DASH/USDT": 0.5,
+        "ADA/USDT": 0.49,
+        "STO/USDT": 0.48,
+        "JOE/USDT": 0.48,
+        "WBTC/USDT": 0.48,
+        "TRUMP/USDT": 0.47,
+        "SUI/USDT": 0.45,
+        "XRP/USDT": 0.43,
+        "KITE/USDT": 0.43,
+        "RENDER/USDT": 0.42,
+        "ETH/USDT": 0.35,
+        "LINK/USDT": 0.34,
+        "ENA/USDT": 0.34,
+        "GIGGLE/USDT": 0.3,
+        "ENJ/USDT": 0.3,
+        "WLD/USDT": 0.29,
+        "RED/USDT": 0.27,
+        "SOL/USDT": 0.25,
+        "\u5e01\u5b89\u4eba\u751f/USDT": 0.22,
+        "FET/USDT": 0.22,
+        "BCH/USDT": 0.22,
+        "BTC/USDT": 0.1,
+        "BNB/USDT": 0.1,
+        "PAXG/USDT": 0.1,
+        "EUR/USDT": 0.1,
+        "AVAX/USDT": 0.1,
+        "FDUSD/USDT": 0.1,
+        "XAUT/USDT": 0.1,
+        "RLUSD/USDT": 0.1,
+        "NEAR/USDT": 0.1,
+        "HBAR/USDT": 0.1,
+        "NOM/USDT": 0.1,
+        "LTC/USDT": 0.1,
+        "AAVE/USDT": 0.1,
+        "U/USDT": 0.1,
+        "ZRO/USDT": 0.1,
+        "APT/USDT": 0.1,
+        "PENGU/USDT": 0.1
+    },
+    "stats": {
+        "BTC/USDT": {
+            "pnl_r": -0.82,
+            "trades": 2,
+            "winrate": 0.5
+        },
+        "ETH/USDT": {
+            "pnl_r": 0.82,
+            "trades": 1,
+            "winrate": 1.0
+        },
+        "SOL/USDT": {
+            "pnl_r": 0.29,
+            "trades": 1,
+            "winrate": 1.0
+        },
+        "XRP/USDT": {
+            "pnl_r": 1.23,
+            "trades": 2,
+            "winrate": 1.0
+        },
+        "ZEC/USDT": {
+            "pnl_r": 2.38,
+            "trades": 6,
+            "winrate": 1.0
+        },
+        "TAO/USDT": {
+            "pnl_r": 3.23,
+            "trades": 7,
+            "winrate": 1.0
+        },
+        "BNB/USDT": {
+            "pnl_r": 0,
+            "trades": 0,
+            "winrate": 0
+        },
+        "DOGE/USDT": {
+            "pnl_r": 2.89,
+            "trades": 3,
+            "winrate": 1.0
+        },
+        "PAXG/USDT": {
+            "pnl_r": 0,
+            "trades": 0,
+            "winrate": 0
+        },
+        "PEPE/USDT": {
+            "pnl_r": 4.35,
+            "trades": 4,
+            "winrate": 1.0
+        },
+        "SUI/USDT": {
+            "pnl_r": 1.37,
+            "trades": 4,
+            "winrate": 1.0
+        },
+        "LINK/USDT": {
+            "pnl_r": 0.75,
+            "trades": 1,
+            "winrate": 1.0
+        },
+        "EUR/USDT": {
+            "pnl_r": 0,
+            "trades": 0,
+            "winrate": 0
+        },
+        "ADA/USDT": {
+            "pnl_r": 1.59,
+            "trades": 3,
+            "winrate": 1.0
+        },
+        "AVAX/USDT": {
+            "pnl_r": -3.61,
+            "trades": 4,
+            "winrate": 0.5
+        },
+        "FDUSD/USDT": {
+            "pnl_r": 0,
+            "trades": 0,
+            "winrate": 0
+        },
+        "\u5e01\u5b89\u4eba\u751f/USDT": {
+            "pnl_r": 0.12,
+            "trades": 3,
+            "winrate": 1.0
+        },
+        "TRX/USDT": {
+            "pnl_r": 1.92,
+            "trades": 2,
+            "winrate": 1.0
+        },
+        "XAUT/USDT": {
+            "pnl_r": -2.32,
+            "trades": 1,
+            "winrate": 0.0
+        },
+        "RLUSD/USDT": {
+            "pnl_r": 0,
+            "trades": 0,
+            "winrate": 0
+        },
+        "NEAR/USDT": {
+            "pnl_r": -0.15,
+            "trades": 3,
+            "winrate": 0.67
+        },
+        "FET/USDT": {
+            "pnl_r": 0.1,
+            "trades": 2,
+            "winrate": 1.0
+        },
+        "ENA/USDT": {
+            "pnl_r": 0.75,
+            "trades": 1,
+            "winrate": 1.0
+        },
+        "STO/USDT": {
+            "pnl_r": 1.5,
+            "trades": 2,
+            "winrate": 1.0
+        },
+        "HBAR/USDT": {
+            "pnl_r": -1.67,
+            "trades": 3,
+            "winrate": 0.67
+        },
+        "NOM/USDT": {
+            "pnl_r": 0,
+            "trades": 0,
+            "winrate": 0
+        },
+        "LTC/USDT": {
+            "pnl_r": -1.57,
+            "trades": 2,
+            "winrate": 0.5
+        },
+        "DASH/USDT": {
+            "pnl_r": 1.65,
+            "trades": 3,
+            "winrate": 1.0
+        },
+        "AAVE/USDT": {
+            "pnl_r": -2.26,
+            "trades": 2,
+            "winrate": 0.5
+        },
+        "JOE/USDT": {
+            "pnl_r": 1.49,
+            "trades": 3,
+            "winrate": 1.0
+        },
+        "RED/USDT": {
+            "pnl_r": 0.37,
+            "trades": 2,
+            "winrate": 1.0
+        },
+        "RENDER/USDT": {
+            "pnl_r": 1.18,
+            "trades": 3,
+            "winrate": 1.0
+        },
+        "TRUMP/USDT": {
+            "pnl_r": 1.49,
+            "trades": 3,
+            "winrate": 1.0
+        },
+        "U/USDT": {
+            "pnl_r": 0,
+            "trades": 0,
+            "winrate": 0
+        },
+        "WLD/USDT": {
+            "pnl_r": 0.49,
+            "trades": 2,
+            "winrate": 1.0
+        },
+        "KITE/USDT": {
+            "pnl_r": 1.25,
+            "trades": 9,
+            "winrate": 1.0
+        },
+        "UNI/USDT": {
+            "pnl_r": 2.64,
+            "trades": 6,
+            "winrate": 1.0
+        },
+        "GIGGLE/USDT": {
+            "pnl_r": 0.54,
+            "trades": 4,
+            "winrate": 1.0
+        },
+        "WBTC/USDT": {
+            "pnl_r": 1.5,
+            "trades": 2,
+            "winrate": 1.0
+        },
+        "ICP/USDT": {
+            "pnl_r": 2.66,
+            "trades": 6,
+            "winrate": 1.0
+        },
+        "XPL/USDT": {
+            "pnl_r": 3.15,
+            "trades": 8,
+            "winrate": 1.0
+        },
+        "ZRO/USDT": {
+            "pnl_r": -1.51,
+            "trades": 5,
+            "winrate": 0.8
+        },
+        "ARB/USDT": {
+            "pnl_r": 2.41,
+            "trades": 9,
+            "winrate": 0.89
+        },
+        "ENJ/USDT": {
+            "pnl_r": 0.54,
+            "trades": 6,
+            "winrate": 1.0
+        },
+        "ASTER/USDT": {
+            "pnl_r": 2.18,
+            "trades": 6,
+            "winrate": 1.0
+        },
+        "APT/USDT": {
+            "pnl_r": -1.01,
+            "trades": 4,
+            "winrate": 0.75
+        },
+        "BCH/USDT": {
+            "pnl_r": 0.12,
+            "trades": 1,
+            "winrate": 1.0
+        },
+        "PENGU/USDT": {
+            "pnl_r": -2.87,
+            "trades": 5,
+            "winrate": 0.6
+        }
+    },
+    "updated": "2026-05-10 15:09:53.796489"
+}

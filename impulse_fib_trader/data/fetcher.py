@@ -15,13 +15,32 @@ class DataFetcher:
         })
 
     def get_active_symbols(self) -> List[str]:
-        """Fetches all active USDT spot symbols, excluding leveraged tokens."""
+        """Fetches symbols from whitelist.json if exists, else all active USDT spot symbols."""
+        import os
+        import json
+        
+        whitelist_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config', 'whitelist.json')
+        if os.path.exists(whitelist_path):
+            try:
+                with open(whitelist_path, 'r') as f:
+                    data = json.load(f)
+                    
+                    if isinstance(data, list):
+                        logger.info(f"Using WHITELIST of {len(data)} symbols.")
+                        return data
+                    elif isinstance(data, dict):
+                        whitelist = data.get('whitelist', [])
+                        if whitelist:
+                            logger.info(f"Using WHITELIST of {len(whitelist)} symbols.")
+                            return whitelist
+            except Exception as e:
+                logger.error(f"Error loading whitelist: {e}")
+
+        # Fallback to all USDT symbols
         self.exchange.load_markets()
         symbols = []
         for s in self.exchange.symbols:
-            # Берем только пары к USDT
             if '/USDT' in s and ':' not in s:
-                # Исключаем токены с плечом (UP, DOWN, BULL, BEAR)
                 base = s.split('/')[0]
                 if not any(suffix in base for suffix in ['UP', 'DOWN', 'BULL', 'BEAR']):
                     symbols.append(s)

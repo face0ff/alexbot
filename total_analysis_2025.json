@@ -1,0 +1,299 @@
+{
+    "year": 2025,
+    "symbols": {
+        "BTC/USDT": {
+            "IFPC": -13.0,
+            "Fib75": 309.0,
+            "TAS": 33.0,
+            "SMC": 32.0
+        },
+        "ETH/USDT": {
+            "IFPC": -12.0,
+            "Fib75": 267.0,
+            "TAS": -33.0,
+            "SMC": 19.0
+        },
+        "SOL/USDT": {
+            "IFPC": -18.0,
+            "Fib75": 314.0,
+            "TAS": -8.0,
+            "SMC": 29.0
+        },
+        "XRP/USDT": {
+            "IFPC": -13.0,
+            "Fib75": 250.0,
+            "TAS": 13.0,
+            "SMC": 25.0
+        },
+        "ZEC/USDT": {
+            "IFPC": -16.0,
+            "Fib75": 449.0,
+            "TAS": 8.0,
+            "SMC": 57.0
+        },
+        "TAO/USDT": {
+            "IFPC": 3.0,
+            "Fib75": 232.0,
+            "TAS": -27.0,
+            "SMC": 6.0
+        },
+        "BNB/USDT": {
+            "IFPC": -13.0,
+            "Fib75": 337.0,
+            "TAS": 5.0,
+            "SMC": 48.0
+        },
+        "DOGE/USDT": {
+            "IFPC": -18.0,
+            "Fib75": 328.0,
+            "TAS": -3.0,
+            "SMC": 57.0
+        },
+        "PAXG/USDT": {
+            "IFPC": -1.0,
+            "Fib75": 528.0,
+            "TAS": 39.0,
+            "SMC": 73.0
+        },
+        "PEPE/USDT": {
+            "IFPC": -20.0,
+            "Fib75": 439.0,
+            "TAS": -12.0,
+            "SMC": 14.0
+        },
+        "SUI/USDT": {
+            "IFPC": -23.0,
+            "Fib75": 310.0,
+            "TAS": -36.0,
+            "SMC": 21.0
+        },
+        "LINK/USDT": {
+            "IFPC": -11.0,
+            "Fib75": 349.0,
+            "TAS": -36.0,
+            "SMC": -3.0
+        },
+        "EUR/USDT": {
+            "Fib75": 411.0,
+            "TAS": -4.0,
+            "SMC": 41.0,
+            "IFPC": 0.0
+        },
+        "ADA/USDT": {
+            "IFPC": -19.0,
+            "Fib75": 299.0,
+            "TAS": -17.0,
+            "SMC": 11.0
+        },
+        "AVAX/USDT": {
+            "IFPC": -20.0,
+            "Fib75": 325.0,
+            "TAS": -8.0,
+            "SMC": 0.0
+        },
+        "FDUSD/USDT": {
+            "Fib75": 286.0,
+            "TAS": -3.0,
+            "SMC": -28.0,
+            "IFPC": 0.0
+        },
+        "\u5e01\u5b89\u4eba\u751f/USDT": {
+            "IFPC": -4.0,
+            "Fib75": 53.0,
+            "TAS": -3.0,
+            "SMC": 6.0
+        },
+        "TRX/USDT": {
+            "IFPC": -23.0,
+            "Fib75": 376.0,
+            "TAS": 24.0,
+            "SMC": 55.0
+        },
+        "XAUT/USDT": {
+            "IFPC": -2.0,
+            "Fib75": 17.0,
+            "TAS": -10.0,
+            "SMC": 8.0
+        },
+        "RLUSD/USDT": {
+            "Fib75": 10.0,
+            "TAS": 0.0,
+            "SMC": -12.0,
+            "IFPC": 0.0
+        },
+        "NEAR/USDT": {
+            "IFPC": -27.0,
+            "Fib75": 333.0,
+            "TAS": -15.0,
+            "SMC": 18.0
+        },
+        "FET/USDT": {
+            "IFPC": -32.0,
+            "Fib75": 419.0,
+            "TAS": 30.0,
+            "SMC": 26.0
+        },
+        "ENA/USDT": {
+            "IFPC": -10.0,
+            "Fib75": 255.0,
+            "TAS": -22.0,
+            "SMC": 20.0
+        },
+        "STO/USDT": {
+            "IFPC": -11.0,
+            "Fib75": 173.0,
+            "TAS": -21.0,
+            "SMC": 1.0
+        },
+        "HBAR/USDT": {
+            "IFPC": -32.0,
+            "Fib75": 356.0,
+            "TAS": -4.0,
+            "SMC": -8.0
+        },
+        "NOM/USDT": {
+            "IFPC": -2.0,
+            "Fib75": 63.0,
+            "TAS": -7.0,
+            "SMC": 15.0
+        },
+        "LTC/USDT": {
+            "IFPC": -9.0,
+            "Fib75": 527.0,
+            "TAS": -37.0,
+            "SMC": -4.0
+        },
+        "DASH/USDT": {
+            "IFPC": -20.0,
+            "Fib75": 354.0,
+            "TAS": -28.0,
+            "SMC": 18.0
+        },
+        "AAVE/USDT": {
+            "IFPC": -28.0,
+            "Fib75": 264.0,
+            "TAS": -48.0,
+            "SMC": 14.0
+        },
+        "JOE/USDT": {
+            "IFPC": -12.0,
+            "Fib75": 289.0,
+            "TAS": -10.0,
+            "SMC": -5.0
+        },
+        "RED/USDT": {
+            "IFPC": -21.0,
+            "Fib75": 266.0,
+            "TAS": -27.0,
+            "SMC": 27.0
+        },
+        "RENDER/USDT": {
+            "IFPC": -20.0,
+            "Fib75": 277.0,
+            "TAS": 4.0,
+            "SMC": 16.0
+        },
+        "TRUMP/USDT": {
+            "IFPC": -22.0,
+            "Fib75": 153.0,
+            "TAS": -21.0,
+            "SMC": 15.0
+        },
+        "U/USDT": {
+            "Fib75": 62.0,
+            "TAS": 0.0,
+            "SMC": 3.0,
+            "IFPC": 0.0
+        },
+        "WLD/USDT": {
+            "IFPC": -6.0,
+            "Fib75": 438.0,
+            "TAS": -8.0,
+            "SMC": 29.0
+        },
+        "KITE/USDT": {
+            "IFPC": 8.0,
+            "Fib75": 71.0,
+            "TAS": 15.0,
+            "SMC": -2.0
+        },
+        "UNI/USDT": {
+            "IFPC": -21.0,
+            "Fib75": 280.0,
+            "TAS": -3.0,
+            "SMC": 18.0
+        },
+        "GIGGLE/USDT": {
+            "IFPC": -2.0,
+            "Fib75": 53.0,
+            "TAS": -6.0,
+            "SMC": 21.0
+        },
+        "WBTC/USDT": {
+            "IFPC": -10.0,
+            "Fib75": 333.0,
+            "TAS": 20.0,
+            "SMC": 33.0
+        },
+        "ICP/USDT": {
+            "IFPC": -25.0,
+            "Fib75": 385.0,
+            "TAS": 4.0,
+            "SMC": -9.0
+        },
+        "XPL/USDT": {
+            "IFPC": -6.0,
+            "Fib75": 82.0,
+            "TAS": 2.0,
+            "SMC": -12.0
+        },
+        "ZRO/USDT": {
+            "IFPC": -5.0,
+            "Fib75": 386.0,
+            "TAS": -6.0,
+            "SMC": -5.0
+        },
+        "ARB/USDT": {
+            "IFPC": -7.0,
+            "Fib75": 363.0,
+            "TAS": 5.0,
+            "SMC": 6.0
+        },
+        "ENJ/USDT": {
+            "IFPC": -28.0,
+            "Fib75": 328.0,
+            "TAS": -28.0,
+            "SMC": -47.0
+        },
+        "ASTER/USDT": {
+            "IFPC": -5.0,
+            "Fib75": 83.0,
+            "TAS": -8.0,
+            "SMC": 3.0
+        },
+        "APT/USDT": {
+            "IFPC": -19.0,
+            "Fib75": 387.0,
+            "TAS": -6.0,
+            "SMC": -5.0
+        },
+        "BCH/USDT": {
+            "IFPC": -4.0,
+            "Fib75": 346.0,
+            "TAS": -6.0,
+            "SMC": 9.0
+        },
+        "PENGU/USDT": {
+            "IFPC": -18.0,
+            "Fib75": 248.0,
+            "TAS": 13.0,
+            "SMC": 1.0
+        }
+    },
+    "totals": {
+        "IFPC": -617.0,
+        "Fib75": 13463.0,
+        "SMC": 655.0,
+        "TAS": -296.0
+    }
+}

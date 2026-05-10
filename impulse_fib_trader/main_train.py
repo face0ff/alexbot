@@ -10,11 +10,12 @@ from features.engineer import FeatureEngineer
 from features.labels import Labeler
 from ml.train import MLTrainer
 
-def train_tas():
-    symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'ADA/USDT', 'XRP/USDT']
+def train_tas_longterm():
+    symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'ADA/USDT', 'XRP/USDT', 'LTC/USDT', 'LINK/USDT']
     timeframe = '1h'
-    start_date = '2023-01-01'
-    end_date = '2023-12-31'
+    # ОБУЧАЕМ НА 4 ГОДАХ (2021-2024)
+    start_date = '2021-01-01'
+    end_date = '2024-12-31'
     
     fetcher = DataFetcher()
     cleaner = DataCleaner()
@@ -27,6 +28,7 @@ def train_tas():
     
     all_data = []
     for symbol in symbols:
+        print(f"Processing {symbol}...")
         df = fetcher.fetch_ohlcv(symbol, timeframe, start_date, end_date)
         if df.empty: continue
         df = cleaner.validate_data(df)
@@ -36,15 +38,15 @@ def train_tas():
             X = fe.extract_features(patterns, df)
             y = labeler.create_labels(patterns, df)
             all_data.append((X, y))
-            print(f"Added {len(patterns)} from {symbol}")
+            print(f"   Added {len(patterns)} patterns")
 
     X = pd.concat([d[0] for d in all_data], ignore_index=True)
     y = pd.concat([d[1] for d in all_data], ignore_index=True)
     
     trainer = MLTrainer()
     trainer.train(X, y)
-    trainer.save_model('trained_model_tas_2023.joblib')
-    print("Model trained on 2023 data.")
+    trainer.save_model('trained_model_tas_21_24.joblib')
+    print("Model trained on 2021-2024 data.")
 
 if __name__ == "__main__":
-    train_tas()
+    train_tas_longterm()

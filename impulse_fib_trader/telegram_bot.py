@@ -1,283 +1,357 @@
+
 import asyncio
 import logging
 import sys
 import os
 import json
+import torch
+import pandas as pd
+import numpy as np
+import mplfinance as mpf
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from config.config import BOT_TOKEN, TELEGRAM_PRIVATE_CHAT_ID
 from data.fetcher import DataFetcher
 from data.cleaner import DataCleaner
-from pattern.tas_detector import TASDetector
+from pattern.market_structure_smc import SMCMarketStructure
 from trade_manager import TradeManager
-from features.engineer import FeatureEngineer
-from ml.train import MLTrainer
+from ml.transformer_smc import SMCTransformer
+from ml.lnn_model import LiquidNet
 
-# Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler("bot.log"), logging.StreamHandler()]
-)
+# --- New: Import Weight Calculator Logic (Modular) ---
+try:
+    from calculate_coin_weights import WeightCalculator
+except ImportError:
+    class WeightCalculator:
+        async def run(self): return "Error: Calculator module not found."
+
+# State management
+STATE_FILE = "telegram_state.json"
+WEIGHTS_FILE = "impulse_fib_trader/config/coin_weights_2024_2025.json"
+
+def get_state():
+    if os.path.exists(STATE_FILE):
+        try:
+            with open(STATE_FILE, 'r') as f: return json.load(f)
+        except: pass
+    return {'chat_id': TELEGRAM_PRIVATE_CHAT_ID, 'use_weights': False}
+
+def save_state(state):
+    with open(STATE_FILE, 'w') as f: json.dump(state, f, indent=4)
+
+# Safe Logger
+class SafeLogger(logging.StreamHandler):
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            self.stream.write(msg.encode('ascii', 'replace').decode() + self.terminator)
+            self.flush()
+        except Exception: self.handleError(record)
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', handlers=[SafeLogger()])
 logger = logging.getLogger(__name__)
 
-# State
-auto_trade_enabled = False
-TELEGRAM_STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'telegram_state.json')
-
-def load_telegram_state():
-    if os.path.exists(TELEGRAM_STATE_FILE):
-        try:
-            with open(TELEGRAM_STATE_FILE, 'r') as f:
-                return json.load(f).get('current_chat_id', TELEGRAM_PRIVATE_CHAT_ID)
-        except: pass
-    return TELEGRAM_PRIVATE_CHAT_ID
-
-def save_telegram_state(chat_id):
-    try:
-        with open(TELEGRAM_STATE_FILE, 'w') as f:
-            json.dump({'current_chat_id': str(chat_id)}, f)
-    except: pass
-
-current_chat_id = load_telegram_state()
-
-# Initialize TAS
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(BASE_DIR, 'config', 'pattern_spec_tas.json')
-MODEL_PATH = os.path.join(BASE_DIR, 'trained_model_tas.joblib')
-
+# Init
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 trade_manager = TradeManager()
-
 fetcher = DataFetcher()
 cleaner = DataCleaner()
-fe = FeatureEngineer()
-trainer = MLTrainer()
+smc = SMCMarketStructure(window=3)
 
-with open(CONFIG_PATH, 'r') as f:
-    config = json.load(f)
-detector = TASDetector(config)
+# Load Models
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WHITELIST_PATH = os.path.join(PROJECT_ROOT, 'impulse_fib_trader', 'config', 'whitelist.json')
 
-if os.path.exists(MODEL_PATH):
-    trainer.load_model(MODEL_PATH)
-    print(f"✅ Модель TAS загружена: {MODEL_PATH}")
-else:
-    print(f"⚠️ Модель {MODEL_PATH} не найдена. Бот будет работать без ML фильтра!")
+transformer_model = SMCTransformer(input_dim=4, d_model=64, nhead=4, num_layers=3)
+transformer_path = os.path.join(PROJECT_ROOT, 'smc_transformer_v1.pth')
+if os.path.exists(transformer_path):
+    transformer_model.load_state_dict(torch.load(transformer_path, map_location=torch.device('cpu')))
+    transformer_model.eval()
 
-# Keyboards
-main_kb = ReplyKeyboardMarkup(keyboard=[
-    [KeyboardButton(text="▶️ Старт Мониторинг"), KeyboardButton(text="⏹️ Стоп Мониторинг")],
-    [KeyboardButton(text="📡 Обзор рынка (H1)")],
-    [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="ℹ️ Статус")]
-], resize_keyboard=True)
+lnn_model = LiquidNet(in_features=5, hidden_features=128, out_features=1)
+lnn_path = os.path.join(PROJECT_ROOT, 'lnn_filter.pth')
+if os.path.exists(lnn_path):
+    lnn_model.load_state_dict(torch.load(lnn_path, map_location=torch.device('cpu')))
+    lnn_model.eval()
 
-async def send_notification(text):
-    global current_chat_id
+auto_scan_active = False
+
+def get_kb():
+    state = get_state()
+    w_status = "ON" if state.get('use_weights') else "OFF"
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🚀 START ENGINE"), KeyboardButton(text="🛑 STOP ENGINE")],
+        [KeyboardButton(text=f"📊 Weights: {w_status}"), KeyboardButton(text="🔄 Refresh Weights")],
+        [KeyboardButton(text="📊 Stats"), KeyboardButton(text="⚙️ Strategy")],
+        [KeyboardButton(text="ℹ️ Status")]
+    ], resize_keyboard=True)
+
+async def notify(text, photo=None):
+    state = get_state()
+    chat_id = state.get('chat_id')
     try:
-        return await bot.send_message(current_chat_id, text, parse_mode="HTML")
+        if photo: await bot.send_photo(chat_id, FSInputFile(photo), caption=text, parse_mode="HTML")
+        else: await bot.send_message(chat_id, text, parse_mode="HTML")
     except Exception as e:
-        logger.error(f"Ошибка отправки в ТГ: {e}")
+        logger.error(f"Notify error: {e}")
+
+def plot_advanced_trade(symbol, is_new=True, trade_data=None):
+    """
+    Генерирует продвинутый график с RSI и всеми уровнями.
+    is_new: если True, рисуем сигнал входа. False - рисуем активную сделку.
+    """
+    try:
+        df = fetcher.fetch_ohlcv(symbol, '15m', (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d'))
+        df = cleaner.calculate_indicators(df)
+        
+        # Берем последние 60 свечей
+        plot_df = df.tail(60).copy()
+        plot_df.index = pd.to_datetime(plot_df.index)
+        
+        apds = []
+        # 1. RSI Panel
+        apds.append(mpf.make_addplot(plot_df['rsi'], panel=1, color='purple', ylabel='RSI'))
+        apds.append(mpf.make_addplot([70]*len(plot_df), panel=1, color='red', linestyle='--'))
+        apds.append(mpf.make_addplot([30]*len(plot_df), panel=1, color='green', linestyle='--'))
+        
+        hlines_prices = []
+        hlines_colors = []
+
+        if is_new:
+            # Для нового сигнала данные берем из аргументов (упрощенно для примера)
+            # В реальности сюда нужно передать конкретные sl/tp
+            pass
+        else:
+            # Для активной сделки рисуем средний вход и сетку
+            total_qty = sum(e['qty'] for e in trade_data['entries'])
+            total_cost = sum(e['price'] * e['qty'] for e in trade_data['entries'])
+            avg_p = total_cost / total_qty
+            
+            hlines_prices = [avg_p, trade_data['sl'], trade_data['tp']]
+            hlines_colors = ['orange', 'red', 'green']
+            
+            # Добавляем уровни сетки (усреднения)
+            for g in trade_data.get('grid_orders', []):
+                if not g['filled']:
+                    hlines_prices.append(g['price'])
+                    hlines_colors.append('gray')
+
+        file_path = f"status_{symbol.replace('/', '_')}.png"
+        mpf.plot(plot_df, type='candle', style='charles', 
+                 addplot=apds, 
+                 hlines=dict(hlines=hlines_prices, colors=hlines_colors, linestyle='--'),
+                 title=f"{symbol} Status",
+                 panel_ratios=(2, 1),
+                 savefig=file_path)
+        return file_path
+    except Exception as e:
+        logger.error(f"Plotting error: {e}")
         return None
+
+# --- Handlers ---
+
+@dp.message(F.text.startswith("📊 Weights:"))
+async def toggle_weights(message: types.Message):
+    state = get_state()
+    state['use_weights'] = not state.get('use_weights', False)
+    save_state(state)
+    await message.answer(f"⚖️ Coin Weighting Filter: <b>{'ON' if state['use_weights'] else 'OFF'}</b>", reply_markup=get_kb(), parse_mode="HTML")
+
+@dp.message(F.text == "🔄 Refresh Weights")
+async def refresh_weights_handler(message: types.Message):
+    await message.answer("⏳ Recalculating weights based on last 90 days... Please wait (approx 1-2 min).")
+    try:
+        calc = WeightCalculator()
+        report = await calc.run() 
+        await message.answer(report, parse_mode="HTML")
+    except Exception as e:
+        await message.answer(f"❌ Error updating weights: {e}")
+
+@dp.message(F.text == "ℹ️ Status")
+async def status_msg(message: types.Message):
+    state = get_state()
+    state['chat_id'] = message.chat.id
+    save_state(state)
+    
+    balance = trade_manager.get_balance()
+    active = trade_manager.active_trades
+    weight_status = "ON" if state.get('use_weights') else "OFF"
+    
+    msg = f"ℹ️ <b>SYSTEM STATUS</b>\n──────────────────\n"
+    msg += f"🚀 Engine: <b>{'RUNNING' if auto_scan_active else 'STOPPED'}</b>\n"
+    msg += f"⚙️ Strategy: <b>{trade_manager.current_strategy}</b>\n"
+    msg += f"⚖️ Weight Filter: <b>{weight_status}</b>\n"
+    msg += f"💵 Balance: <b>{balance:.2f} USDT</b>\n"
+    msg += f"📦 Active Trades: {len(active)}\n"
+    await message.answer(msg, parse_mode="HTML")
+
+    if active:
+        for t in active:
+            symbol = t['symbol']
+            # Генерируем график для КАЖДОЙ сделки
+            path = plot_advanced_trade(symbol, is_new=False, trade_data=t)
+            
+            total_qty = sum(e['qty'] for e in t['entries'])
+            total_cost = sum(e['price'] * e['qty'] for e in t['entries'])
+            avg_entry = total_cost / total_qty
+            
+            ticker = trade_manager.exchange.fetch_ticker(symbol)
+            pnl_pct = (ticker['last'] / avg_entry - 1) * 100
+            
+            info = f"📊 <b>{symbol}</b>\n"
+            info += f"💰 Avg: {avg_entry:.6g} | PnL: <b>{pnl_pct:+.2f}%</b>\n"
+            info += f"📦 Fills: {len(t['entries'])}/3"
+            
+            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"❌ Close {symbol}", callback_data=f"close_{symbol}")]])
+            await notify(info, photo=path)
+            if path and os.path.exists(path): os.remove(path)
+
+@dp.message(F.text == "🚀 START ENGINE")
+async def start_auto(message: types.Message):
+    global auto_scan_active
+    auto_scan_active = True
+    await message.answer("🟢 ENGINE STARTED", reply_markup=get_kb())
+    asyncio.create_task(auto_loop())
+
+@dp.message(F.text == "🛑 STOP ENGINE")
+async def stop_auto(message: types.Message):
+    global auto_scan_active
+    auto_scan_active = False
+    await message.answer("🔴 ENGINE STOPPED", reply_markup=get_kb())
+
+@dp.message(F.text == "📊 Stats")
+async def stats_msg(message: types.Message):
+    await message.answer(trade_manager.get_stats(), parse_mode="HTML")
+
+@dp.message(F.text == "⚙️ Strategy")
+async def strategy_settings(message: types.Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛡 Conservative (Marti)", callback_data="set_strat_MARTI_CONS")],
+        [InlineKeyboardButton(text="🔥 Aggressive (Fib)", callback_data="set_strat_FIB_GRID")]
+    ])
+    await message.answer(f"Current Strategy: <b>{trade_manager.current_strategy}</b>\n\nChoose risk profile:", reply_markup=kb, parse_mode="HTML")
+
+@dp.callback_query(F.data.startswith("set_strat_"))
+async def cb_set_strat(callback: CallbackQuery):
+    strat = callback.data.replace("set_strat_", "")
+    if trade_manager.set_strategy(strat):
+        trade_manager._save_state()
+        await callback.answer(f"Strategy changed to {strat}")
+        await callback.message.edit_text(f"✅ Strategy updated to: <b>{strat}</b>", parse_mode="HTML")
+
+@dp.callback_query(F.data.startswith("close_"))
+async def cb_close(callback: CallbackQuery):
+    symbol = callback.data.replace("close_", "")
+    success, res = trade_manager.manual_market_exit(symbol)
+    await callback.answer(res)
+    await callback.message.edit_text(f"🛑 <b>{symbol}</b>: {res}")
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    global current_chat_id
-    current_chat_id = message.chat.id
-    save_telegram_state(current_chat_id)
-    await message.answer(f"🤖 <b>TAS_v1 (Tails & Shelves) Bot</b>\n\nChat ID: <code>{message.chat.id}</code>\nБот готов к работе.", reply_markup=main_kb, parse_mode="HTML")
+    save_state({'chat_id': message.chat.id, 'use_weights': False})
+    await message.answer("🤖 <b>SMC Bot v2.6.0</b>\nVisual Status + RSI Protection.", reply_markup=get_kb(), parse_mode="HTML")
 
-@dp.message(F.text == "▶️ Старт Мониторинг")
-async def start_auto_monitor(message: types.Message):
-    global auto_trade_enabled, current_chat_id
-    current_chat_id = message.chat.id
-    save_telegram_state(current_chat_id)
-    if auto_trade_enabled:
-        await message.answer("⚠️ Мониторинг уже запущен.")
-        return
-    
-    auto_trade_enabled = True
-    await message.answer("✅ <b>Мониторинг TAS_v1 ВКЛЮЧЕН.</b>\nИнтервал: 15 мин.", parse_mode="HTML")
-    asyncio.create_task(perform_scan_and_trade(show_progress=True))
+# --- Logic ---
 
-@dp.message(F.text == "⏹️ Стоп Мониторинг")
-async def stop_auto_monitor(message: types.Message):
-    global auto_trade_enabled
-    auto_trade_enabled = False
-    await message.answer("🛑 <b>Мониторинг ОСТАНОВЛЕН.</b>", parse_mode="HTML")
-
-async def perform_scan_and_trade(show_progress=False):
-    if show_progress:
-        await send_notification("🔍 Сканирую рынок на наличие паттернов TAS...")
-
+async def scan_and_trade():
+    logger.info("--- [SCAN] START ---")
+    state = get_state()
     try:
-        symbols = fetcher.get_active_symbols()
-        total = len(symbols)
-        best_setup = None
-        max_prob = 0
-        
-        cooldown_symbols = trade_manager.get_cooldown_symbols(hours=4)
+        with open(WHITELIST_PATH, 'r') as f: symbols = json.load(f)
+    except: symbols = ['BTC/USDT', 'ETH/USDT']
 
-        for i, symbol in enumerate(symbols):
-            if any(t['symbol'] == symbol for t in trade_manager.active_trades):
-                continue
-            if symbol in cooldown_symbols:
-                continue
-
-            df = await asyncio.to_thread(fetcher.fetch_ohlcv, symbol, '1h', (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'))
-            if df.empty or len(df) < 40: continue
-            
-            df = cleaner.validate_data(df)
-            df = cleaner.calculate_indicators(df)
-            
-            patterns = detector.detect_patterns(df)
-            # Берем только свежие пробои (последние 3 свечи)
-            latest = [p for p in patterns if p['entry_idx'] >= len(df) - 3]
-            
-            if latest:
-                # Проверка на "нож" (2 зеленые свечи)
-                if df.iloc[-1]['close'] <= df.iloc[-1]['open'] or df.iloc[-2]['close'] <= df.iloc[-2]['open']:
-                    continue
-
-                ticker = await asyncio.to_thread(trade_manager.exchange.fetch_ticker, symbol)
-                current_price = ticker['last']
-                
-                prob = 1.0 # По умолчанию если нет модели
-                if trainer.model:
-                    X = fe.extract_features(latest, df)
-                    probs = trainer.model.predict_proba(X)
-                    prob = float(probs[-1][1])
-                
-                p = latest[-1]
-                if prob > max_prob and current_price < p['entry_price'] * 1.01:
-                    max_prob = prob
-                    best_setup = {'symbol': symbol, 'p': p, 'prob': prob, 'current_price': current_price}
-            
-            if i % 50 == 0: print(f"Scanned {i}/{total}...")
-
-        if best_setup and max_prob >= 0.50:
-            s = best_setup
-            p = s['p']
-            
-            sl = p['tail_low']
-            risk = s['current_price'] - sl
-            tp = s['current_price'] + (risk * 2.0)
-            
-            msg = f"🎯 <b>СИГНАЛ TAS_v1: {s['symbol']}</b>\n"
-            msg += f"Уверенность ML: {s['prob']:.1%}\n\n"
-            msg += f"Вход (рынок): <code>{s['current_price']:.6g}</code>\n"
-            msg += f"SL: <code>{sl:.6g}</code> | TP: <code>{tp:.6g}</code>\n"
-            await send_notification(msg)
-            
-            success, res_msg = await asyncio.to_thread(
-                trade_manager.enter_trade, s['symbol'], s['current_price'], sl, tp, 'TAS', 10
-            )
-            await send_notification(res_msg)
-            
-    except Exception as e:
-        logger.error(f"Scan error: {e}")
-
-@dp.message(F.text == "📡 Обзор рынка (H1)")
-async def global_scan_no_trade(message: types.Message):
-    status_msg = await message.answer("⏳ Ищу паттерны TAS (Tails & Shelves)...")
-    try:
-        symbols = fetcher.get_active_symbols()
-        found = []
-        for symbol in symbols[:100]:
-            df = await asyncio.to_thread(fetcher.fetch_ohlcv, symbol, '1h', (datetime.now() - timedelta(days=5)).strftime('%Y-%m-%d'))
-            if df.empty: continue
-            df = cleaner.validate_data(df)
-            df = cleaner.calculate_indicators(df)
-            patterns = detector.detect_patterns(df)
-            latest = [p for p in patterns if p['entry_idx'] >= len(df) - 6]
-            for p in latest:
-                found.append((symbol, p))
-        
-        if not found:
-            await status_msg.edit_text("Свежих паттернов TAS не найдено.")
-            return
-
-        res = "📡 <b>Актуальные паттерны TAS (H1):</b>\n"
-        for symbol, p in found[:10]:
-            res += f"\n🔹 <code>{symbol}</code>\nУровень пробоя: <code>{p['breakout_level']:.6g}</code>\n"
-        await status_msg.edit_text(res, parse_mode="HTML")
-    except Exception as e:
-        await message.answer(f"Ошибка: {e}")
-
-@dp.message(F.text == "📊 Статистика")
-async def stats_handler(message: types.Message):
-    stats = await asyncio.to_thread(trade_manager.get_stats)
-    await message.answer(stats, parse_mode="HTML")
-
-@dp.message(F.text == "ℹ️ Статус")
-async def status_handler(message: types.Message):
-    if not trade_manager.active_trades:
-        await message.answer("⚪ Нет активных сделок.")
-        return
-
-    await message.answer("⏳ Запрашиваю текущие цены...")
-    
-    for t in trade_manager.active_trades:
-        symbol = t['symbol']
+    if state.get('use_weights') and os.path.exists(WEIGHTS_FILE):
         try:
-            ticker = await asyncio.to_thread(trade_manager.exchange.fetch_ticker, symbol)
-            curr_price = ticker['last']
-            entry_price = t['real_entry_price']
-            pnl_perc = ((curr_price / entry_price) - 1) * 100
-            pnl_color = "🟢" if pnl_perc >= 0 else "🔴"
-            
-            tv_symbol = symbol.replace("/", "")
-            tv_url = f"https://www.tradingview.com/chart/?symbol=BINANCE:{tv_symbol}"
-            
-            res = f"🔹 <b>{symbol} (TAS)</b>\n"
-            res += f"Вход: <code>{entry_price:.6g}</code>\n"
-            res += f"Текущая: <code>{curr_price:.6g}</code> ({pnl_color} {pnl_perc:+.2f}%)\n"
-            res += f"TP: <code>{t['tp']:.6g}</code> | SL: <code>{t['sl']:.6g}</code>"
-            
-            sell_kb = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(text=f"💰 Продать", callback_data=f"sell_{symbol}"),
-                    InlineKeyboardButton(text="📈 График TV", url=tv_url)
-                ]
-            ])
-            await message.answer(res, reply_markup=sell_kb, parse_mode="HTML")
-        except Exception as e:
-            logger.error(f"Error: {e}")
+            with open(WEIGHTS_FILE, 'r') as f: 
+                data = json.load(f)
+                weights = data.get('weights', {})
+                symbols.sort(key=lambda x: weights.get(x, 0.1), reverse=True)
+        except: pass
 
-@dp.callback_query(F.data.startswith("sell_"))
-async def process_manual_sell(callback: CallbackQuery):
-    symbol = callback.data.replace("sell_", "")
-    success, msg = await asyncio.to_thread(trade_manager.manual_market_exit, symbol)
-    if success:
-        await callback.message.edit_text(f"✅ Сделка по {symbol} закрыта.\n{msg}", parse_mode="HTML")
-    else:
-        await callback.message.answer(f"❌ {msg}")
+    for symbol in symbols:
+        try:
+            if not auto_scan_active: break
+            if any(t['symbol'] == symbol for t in trade_manager.active_trades): continue
+            
+            df = fetcher.fetch_ohlcv(symbol, '15m', (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d'))
+            if len(df) < 100: continue
+            
+            df_4h = fetcher.fetch_ohlcv(symbol, '4h', (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d'))
+            df_4h = smc.detect_bos(df_4h)
+            bias = df_4h['bos_signal'].replace(0, np.nan).ffill().iloc[-1]
 
-async def monitor_trades():
+            df = cleaner.calculate_indicators(df)
+            df = smc.detect_bos(df)
+            
+            for l in [0, 1]:
+                idx = len(df) - 1 - l
+                if df['bos_signal'].iloc[idx] == 1 and bias == 1:
+                    seq = np.nan_to_num((df[['open','high','low','close']].values[1:] - df[['open','high','low','close']].values[:-1]) / (df['atr'].values[1:].reshape(-1,1) + 1e-9))
+                    x_t = torch.from_numpy(np.clip(seq[idx-50:idx], -5, 5)).unsqueeze(0).float()
+                    with torch.no_grad(): prob_trans = transformer_model(x_t).item()
+                    
+                    if prob_trans > 0.55:
+                        df['returns'] = df['close'].pct_change()
+                        df['hl_range'] = (df['high'] - df['low']) / df['close']
+                        df['vol_ratio'] = df['volume'] / df['volume'].rolling(20).mean()
+                        df['dist_ema'] = (df['close'] / df['ema_200']) - 1
+                        seq_l = df[['returns', 'hl_range', 'vol_ratio', 'dist_ema', 'rsi']].values[idx-60:idx]
+                        prob_lnn = 0
+                        if len(seq_l) == 60:
+                            with torch.no_grad(): prob_lnn = torch.sigmoid(lnn_model(torch.from_numpy(seq_l).unsqueeze(0).float())).item()
+                        
+                        if prob_lnn >= 0.60:
+                            price = df['close'].iloc[idx]
+                            sl = df['swing_low'].iloc[idx-20:idx].min()
+                            if np.isnan(sl) or abs(price-sl)/price > 0.05: sl = price * 0.992
+                            tp = price + 2.0 * (price - sl)
+                            
+                            success, res = trade_manager.enter_trade(symbol, price, sl, tp, amount_usdt=10)
+                            if success:
+                                last_trade = trade_manager.active_trades[-1]
+                                path = plot_advanced_trade(symbol, is_new=False, trade_data=last_trade)
+                                await notify(f"🚀 <b>ENTER: {symbol}</b>\n🎯 Prob: {prob_trans:.1%}\n🛡 LNN: YES ({prob_lnn:.1%})", photo=path)
+                                if path and os.path.exists(path): os.remove(path)
+                            break
+        except: continue
+
+async def auto_loop():
+    while auto_scan_active:
+        await scan_and_trade()
+        await asyncio.sleep(900)
+
+async def exit_loop():
+    last_alert = {}
     while True:
         try:
             if trade_manager.active_trades:
-                msgs = await asyncio.to_thread(trade_manager.check_trade_exit)
-                for m in msgs:
-                    await send_notification(m)
-        except Exception as e:
-            logger.error(f"Monitor error: {e}")
-        await asyncio.sleep(60)
-
-async def auto_scan_task():
-    while True:
-        if auto_trade_enabled:
-            await perform_scan_and_trade(show_progress=False)
-        await asyncio.sleep(60 * 15)
+                msgs = trade_manager.check_trade_exit()
+                for m in msgs: await notify(m)
+                
+                # --- PROFIT ALERTS (15 MIN) ---
+                now = datetime.now()
+                for t in trade_manager.active_trades:
+                    symbol = t['symbol']
+                    total_qty = sum(e['qty'] for e in t['entries'])
+                    total_cost = sum(e['price'] * e['qty'] for e in t['entries'])
+                    avg_entry = total_cost / total_qty
+                    ticker = trade_manager.exchange.fetch_ticker(symbol)
+                    pnl_pct = (ticker['last'] / avg_entry - 1) * 100
+                    
+                    threshold = 3.0 if len(t['entries']) == 1 else (2.0 if len(t['entries']) == 2 else 1.0)
+                    if pnl_pct >= threshold:
+                        if symbol not in last_alert or (now - last_alert[symbol]) >= timedelta(minutes=15):
+                            await notify(f"🔔 <b>PROFIT ALERT: {symbol}</b>\n📈 Profit: <b>{pnl_pct:+.2f}%</b>\n🛡 RSI Guard Active")
+                            last_alert[symbol] = now
+        except Exception as e: logger.error(f"Exit error: {e}")
+        await asyncio.sleep(30)
 
 async def main():
-    asyncio.create_task(monitor_trades())
-    asyncio.create_task(auto_scan_task())
+    asyncio.create_task(exit_loop())
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
